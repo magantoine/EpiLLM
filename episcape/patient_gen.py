@@ -8,6 +8,9 @@ from typing import (List,
                     Dict,
                     Any)
 
+## aux
+import pandas as pd
+
 
 
 class Patient:
@@ -15,9 +18,11 @@ class Patient:
         self.demos = Demographics(fix_inputs)
         self.clinical_cdt = ClinicalCondition(fix_inputs)
 
+    def __dict__(self) -> dict:
+        return self.demos.attr | self.clinical_cdt.attr
     def __str__(self) -> str:
-        return "> demographics : \n" + str(self.demos) + "\n" + "> clinical condition : \n" + str(self.clinical_cdt)
-
+        return "> demographics : \n" + str(self.demos) + "\n" + "> clinical condition :" + str(self.clinical_cdt)
+    
 
 class PatientGenerator(Generator): 
 
@@ -26,6 +31,13 @@ class PatientGenerator(Generator):
         """
         pass
 
-    def generate(self, n:int=100) -> List[Patient]:
-        return [Patient(None) for i in range(n)]
+    def generate(self,
+                 n:int=100,
+                 return_type:type=List) -> List[Patient]:
+        if(return_type == List):
+            return [Patient(None) for _ in range(n)]
+        elif(return_type == pd.DataFrame):
+            return pd.DataFrame(
+                [Patient(None).__dict__() for _ in range(n)]
+            )
 
