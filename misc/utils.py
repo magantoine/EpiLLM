@@ -1,6 +1,7 @@
+from decorators import expose
 from matplotlib import pyplot as plt
 
-
+@expose
 def plot_age_pyramid(df):
     if("Age" not in df.columns
        or "Male" not in df.columns

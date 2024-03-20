@@ -1,6 +1,7 @@
 ## local imports
 from .gen_utils import Generator
 from .patient_gen_utils.patients_distribution import (Demographics, ClinicalCondition)
+from decorators import expose
 
 
 ## typing
@@ -12,7 +13,7 @@ from typing import (List,
 import pandas as pd
 
 
-
+@expose
 class Patient:
     def __init__(self, fix_inputs) -> None:
         self.demos = Demographics(fix_inputs)
@@ -23,7 +24,7 @@ class Patient:
     def __str__(self) -> str:
         return "> demographics : \n" + str(self.demos) + "\n" + "> clinical condition :" + str(self.clinical_cdt)
     
-
+@expose
 class PatientGenerator(Generator): 
 
     def __init__(self) -> None:

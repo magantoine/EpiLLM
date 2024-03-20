@@ -1,8 +1,11 @@
+from decorators import expose
+
 ## imports 
 import numpy as np
 import pandas as pd
 import os 
-DISTS_PATH = os.path.join(os.environ["DIR_PATH"], "episcape/patient_gen_utils/distributions")
+BASE_PATH = os.environ["DIR_PATH"] if "DIR_PATH" in os.environ else "./"
+DISTS_PATH = os.path.join(BASE_PATH, "episcape/patient_gen_utils/distributions")
 
 """
     - EPILEPSY_TYPE : brain region affected
@@ -11,7 +14,7 @@ DISTS_PATH = os.path.join(os.environ["DIR_PATH"], "episcape/patient_gen_utils/di
     - COMORBIDITIES : does the patient has commorbidity
 """
 
-
+@expose
 class ClinicalCondition:
 
     KEYS = ["EPILEPSY_TYPE", "EPILEPSY_FOCUS", "SILENT", "COMORBIDITIES"]
@@ -63,7 +66,7 @@ class ClinicalCondition:
 
 demographics = pd.read_csv(os.path.join(DISTS_PATH,"demographics.csv"))
 
-
+@expose
 class Demographics:
 
     KEYS = ["gender", "age", "ethnic_group"]
