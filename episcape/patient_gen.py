@@ -4,12 +4,9 @@ from .patient_gen_utils.patients_distribution import (Demographics, ClinicalCond
 from decorators import expose
 
 
-## typing
 from typing import (List,
                     Dict,
                     Any)
-
-## aux
 import pandas as pd
 
 
@@ -17,7 +14,7 @@ import pandas as pd
 class Patient:
     def __init__(self, fix_inputs) -> None:
         self.demos = Demographics(fix_inputs)
-        self.clinical_cdt = ClinicalCondition(fix_inputs)
+        self.clinical_cdt = ClinicalCondition(fix_inputs, self.demos)
 
     def __dict__(self) -> dict:
         return self.demos.attr | self.clinical_cdt.attr
@@ -28,8 +25,6 @@ class Patient:
 class PatientGenerator(Generator): 
 
     def __init__(self) -> None:
-        """
-        """
         pass
 
     def generate(self,
