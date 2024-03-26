@@ -10,10 +10,11 @@ from .pipeline_gen import *
 # from .patient_gen_utils import *
 
 
-rm evaluate/__init__.py
-touch evaluate/__init__.py
+rm evaluation/__init__.py
+touch evaluation/__init__.py
 echo "from .evaluate_utils import  *
-from .evaluation import *" >> evaluate/__init__.py
+from .classes import *
+from .offline_metrics import *" >> evaluation/__init__.py
 
 rm misc/__init__.py
 touch misc/__init__.py

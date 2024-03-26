@@ -39,7 +39,6 @@ class Handler(FileSystemEventHandler):
                 
                 print(f"Received {event.event_type} event - %s." % event.src_path)
                 print("> Rebuild :")
-                # make.make_dependencies()
                 subprocess.call("./dependencies.sh")
 
 

@@ -1,7 +1,7 @@
 import os
 DIR_PATH = "/Users/antoinemagron/Documents/EPFL/PDM/crchum/"
 TOP, BOTTOM = 0, 1
-MODULES = [("episcape", TOP), ("evaluate", TOP), ("misc", TOP), ("models", TOP), ("episcape.patient_gen_utils", BOTTOM)]
+MODULES = [("episcape", TOP), ("evaluation", TOP), ("misc", TOP), ("models", TOP), ("episcape.patient_gen_utils", BOTTOM)]
 
 
 
