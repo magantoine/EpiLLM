@@ -1,5 +1,6 @@
 from decorators import expose
 from matplotlib import pyplot as plt
+import pandas as pd
 
 @expose
 def plot_age_pyramid(df):
@@ -32,3 +33,11 @@ def plot_age_pyramid(df):
 
     #display plot
     plt.show()
+
+
+@expose
+def from_list_to_df(patients):
+    if(type(patients) != list):
+        raise ValueError("The input is not a list.")
+
+    return pd.DataFrame([_.__dict__() for _ in patients])
