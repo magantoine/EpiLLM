@@ -11,7 +11,8 @@ if("DIR_PATH" in os.environ):
     epio["Synonyms"] = epio["Synonyms"].dropna().apply(lambda x : x.replace("|", ", "))
 
 
-TEMPLATES = ["""
+TEMPLATES = [
+        """
             You are a doctor in neurology. You'll be given the data from a patient's electronic record.
             You'll need to produce a dense version of the electronic health record. It should be a long paragraph
             where you develop all of the person's medical journey. The patient has been diagnosed at some

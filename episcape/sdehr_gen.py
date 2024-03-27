@@ -39,9 +39,7 @@ class SDeHRGenerator(Generator):
 
 
     def generate_sdehr(self, patient: Patient) -> str:
-        print("PROMPT :")
         prompt = get_prompt(add_info=dict(patient), version=self.version, ontology=self.version > 1)
-        # print(prompt)
         return self.query(messages=[
             {
                 "role": "system",
