@@ -134,6 +134,11 @@ demographics = pd.read_csv(os.path.join(DISTS_PATH,"demographics.csv"))
 
 @expose
 class Demographics:
+    """
+        Demographics of the patients. 
+        Age, Gender, and Ethnic group should be present at
+        equal rates in the training dataset
+    """
 
     KEYS = ["gender", "age", "ethnic_group"]
 
@@ -171,4 +176,9 @@ class Demographics:
 
     def __str__(self) -> str:
         return str(self.attr)
+        
+    
 
+        
+
+    
