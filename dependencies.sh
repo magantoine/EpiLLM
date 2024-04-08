@@ -25,7 +25,8 @@ touch models/__init__.py
 echo "from .base_model import *
 from .baseline import *
 from .epiLLM import *
-from .model_utils import *" >> models/__init__.py
+from .model_utils import *
+from .spec_datasets import *" >> models/__init__.py
 
 rm episcape/patient_gen_utils/__init__.py
 touch episcape/patient_gen_utils/__init__.py
