@@ -39,7 +39,11 @@ class SDeHRGenerator(Generator):
 
 
     def generate_sdehr(self, patient: Patient) -> str:
-        prompt = get_prompt(add_info=dict(patient), version=self.version, ontology=self.version > 1)
+        query_type, prompt = get_prompt(add_info=dict(patient), version=self.version, ontology=self.version == 1)
+        print("QUERY TYPE :", query_type)
+
+        if(query_type == "COMPOUND"):
+            return self.conversational(prompt, model="gpt-3.5-turbo")
         return self.query(messages=[
             {
                 "role": "system",
@@ -51,6 +55,30 @@ class SDeHRGenerator(Generator):
             }
         ], model="gpt-3.5-turbo")
 
+
+    def conversational(self,
+                       questions: List[str],
+                       model: str="gpt-4"):
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a doctor in neurology."
+            }
+        ]
+        complete_res = []
+        for question in questions:
+            messages.append({
+                "role": "user",
+                "content": question
+            })
+            print(messages)
+            answer = self.query(messages, model)
+            messages.append({
+                "role": "assistant",
+                "content": answer
+            })
+            complete_res.append(answer)
+        return "\n\n".join(complete_res)
 
     def query(self, 
             messages:List[Dict[str, str]],
