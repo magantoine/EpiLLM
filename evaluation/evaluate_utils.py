@@ -1,31 +1,21 @@
-from typing import (
-    List
-)
+from transformers import AutoModel, AutoTokenizer
 
-class Experiment:
 
-    def __init__(self) -> None:
-        raise NotImplementedError()
 
-    def result(self) -> float:
-        raise NotImplementedError()
-    
+class EmbSimModel():
 
-class SingleExperiment:
+    def __init__(self, model_name) -> None:
+        self.model = None
+        self.tok = None
+        self.model_name = model_name
+        self.max_length = None
 
-    def __init__(self,
-                 preds: List,
-                 target: List) -> None:
-        pass
+    def get_emb(self, sentence) -> float:
+        if(self.model is None or self.tok is None):
+            self.tok = AutoTokenizer.from_pretrained(self.model_name)
+            self.model = AutoModel.from_pretrained(self.model_name)
+            self.max_length = self.model.model_max_length
+        return self.model(
+            **self.tok(sentence, return_tensors="pt", padding="max_length", truncation=True, max_length=512)
+        ).last_hidden_state[:, 0, :]
 
-    def result(self) -> float:
-        pass
-
-class FullExperiment:
-
-    def __init__(self,
-                 exps: List[Experiment]) -> None:
-        pass
-
-    def result(self) -> float:
-        pass

@@ -1,27 +1,14 @@
 from decorators import expose
 from typing import List, Any, Union, Dict
 
-from transformers import AutoModel, AutoTokenizer
+from .evaluate_utils import EmbSimModel
 from torchmetrics.functional import pairwise_cosine_similarity
 import evaluate as hf_evaluate
 import numpy as np
+from nltk.tokenize import RegexpTokenizer
 
 
-class EmbSimModel():
-
-    def __init__(self, model_name) -> None:
-        self.model = None
-        self.tok = None
-        self.model_name = model_name
-
-    def get_emb(self, sentence) -> float:
-        if(self.model is None or self.tok is None):
-            self.tok = AutoTokenizer.from_pretrained(self.model_name)
-            self.model = AutoModel.from_pretrained(self.model_name)
-        return self.model(
-            **self.tok(sentence, return_tensors="pt", padding=True, truncation="longest_first")
-        ).last_hidden_state[:, 0, :]
-
+wtok = RegexpTokenizer(r'\w+')
 emb_sim_model = EmbSimModel("emilyalsentzer/Bio_ClinicalBERT")
 
 
@@ -53,5 +40,10 @@ def testBLEU(sentences: List[str],
              ) -> Dict[str, Any]:
     bleu = hf_evaluate.load("bleu")
     return bleu.compute(predictions=sentences, references=test_sentences)
+
+@expose
+def genlength(sentences: List[str]) -> List[int]:
+    return np.array([len(wtok.tokenize(_)) for _ in sentences])
+
 
 
