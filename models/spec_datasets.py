@@ -6,9 +6,9 @@ from nltk.tokenize import RegexpTokenizer
 from nltk.tokenize import sent_tokenize
 
 
+wtok = RegexpTokenizer(r'\w+')
 FLAG = "epilep"
 
-wtok = RegexpTokenizer(r'\w+')
 
 ##################### PMC ###########################################################################
 def advanced_filter(notes):

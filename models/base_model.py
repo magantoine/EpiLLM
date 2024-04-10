@@ -1,8 +1,8 @@
 from decorators import expose
-from .model_utils import Models
+from .model_utils import Model
 
-@expose
-class BaseModel(Models):
+
+class BaseModel(Model):
     def __init__(self) -> None:
         pass
 

@@ -1,16 +1,10 @@
-class Models():
+from decorators import expose
+
+@expose
+class Model():
     def __init__(self) -> None:
         pass
 
 
-    def load_model(self):
-        pass
-
-    def predict(self):
-        pass
-
-    def train(self):
-        pass
-
-    def test(self):
+    def query(self) -> None:
         pass
