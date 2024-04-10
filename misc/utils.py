@@ -1,6 +1,9 @@
+from decorators import expose
 from matplotlib import pyplot as plt
+import pandas as pd
+from typing import List, Dict
 
-
+@expose
 def plot_age_pyramid(df):
     if("Age" not in df.columns
        or "Male" not in df.columns
@@ -31,3 +34,22 @@ def plot_age_pyramid(df):
 
     #display plot
     plt.show()
+
+
+@expose
+def from_list_to_df(patients):
+    if(type(patients) != list):
+        raise ValueError("The input is not a list.")
+
+    return pd.DataFrame([_.__dict__() for _ in patients])
+
+
+@expose
+def write_values(gens: List[str],
+                 fpath: str="docs/temp.md",
+                 psep:str="*",
+                 seprep:int=100) -> None:
+    
+    with open(fpath, 'w') as md:
+        md.write((f"\n\n\n{psep*seprep}\n\n\n").join(gens))
+    

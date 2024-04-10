@@ -1,6 +1,8 @@
-from .model_utils import Models
+from decorators import expose
+from .model_utils import Model
 
-class Baseline(Models):
+
+class Baseline(Model):
     def __init__(self) -> None:
         pass
 
