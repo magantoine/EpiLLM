@@ -4,8 +4,6 @@ from typing import (List,
 import pandas as pd
 import numpy as np
 
-## local imports
-from .gen_utils import Generator
 from .patient_gen_utils.patients_distribution import (
     Demographics,
     ClinicalCondition
@@ -27,7 +25,7 @@ class Patient:
     
 
 @expose
-class PatientGenerator(Generator): 
+class PatientGenerator(): 
 
     NOISE = [
         ("a", 1/3),

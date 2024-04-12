@@ -1,10 +1,9 @@
 from decorators import expose
 
 
-## super class
-from .gen_utils import Generator
+
 from .patient_gen import Patient
-from .patient_gen_utils import get_prompt
+from .patient_gen_utils import (get_prompt, get_refine_prompt_template)
 
 
 ## API key from .env file
@@ -28,7 +27,7 @@ from openai.error import (
 
 
 @expose
-class SDeHRGenerator(Generator):
+class SDeHRGenerator():
     
     def __init__(self, temperature, version) -> None:
         self.api_key = API_KEY
@@ -55,6 +54,12 @@ class SDeHRGenerator(Generator):
             }
         ], model="gpt-3.5-turbo")
 
+
+    def refine(self, 
+               patient: Patient,
+               initial: str) -> str:
+        pass
+        
 
     def conversational(self,
                        questions: List[str],

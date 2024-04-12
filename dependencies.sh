@@ -2,8 +2,7 @@
 
 rm episcape/__init__.py
 touch episcape/__init__.py
-echo "from .gen_utils import *
-from .sdehr_gen import *
+echo "from .sdehr_gen import *
 from .patient_gen import *
 from .pipeline_gen import *
 " >> episcape/__init__.py
@@ -22,9 +21,8 @@ echo "from .utils import *" >> misc/__init__.py
 
 rm models/__init__.py
 touch models/__init__.py
-echo "from .base_model import *
-from .baseline import *
-from .epiLLM import *
+echo "from .baseline import *
+from .llms import *
 from .model_utils import *
 from .spec_datasets import *" >> models/__init__.py
 
