@@ -14,7 +14,6 @@ class EmbSimModel():
         if(self.model is None or self.tok is None):
             self.tok = AutoTokenizer.from_pretrained(self.model_name)
             self.model = AutoModel.from_pretrained(self.model_name)
-            self.max_length = self.model.model_max_length
         return self.model(
             **self.tok(sentence, return_tensors="pt", padding="max_length", truncation=True, max_length=512)
         ).last_hidden_state[:, 0, :]
