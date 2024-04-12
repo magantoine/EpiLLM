@@ -96,6 +96,16 @@ test["sdehr"] = [
 ]
 ```
 
+Or directly with `PipelineGenerator` :
+
+```python
+from episcape import PipelineGenerator
+
+
+pip = PipelineGenerator(temperature=1, version=4)
+df = pip.generate(10)
+```
+
 
 #### Evaluation
 
