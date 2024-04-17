@@ -37,7 +37,7 @@ class OpenAIGPT(Model):
         self.api_key = API_KEY
         self.temperature = temperature
         openai.api_key = API_KEY
-        print("LOADED API KEY : ", self.api_key)
+        # print("LOADED API KEY : ", self.api_key)
 
     def query(self, 
               prompt: Dict[str, str]) -> None:
