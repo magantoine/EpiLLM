@@ -6,17 +6,11 @@ import pandas as pd
 import os 
 from random import randrange
 from datetime import timedelta
-
+import random
 
 BASE_PATH = os.environ["DIR_PATH"] if "DIR_PATH" in os.environ else "./"
 DISTS_PATH = os.path.join(BASE_PATH, "episcape/patient_gen_utils/distributions")
 
-"""
-    - EPILEPSY_TYPE : brain region affected
-    - EPILEPSY_FOCUS : focus/source of the epilepsy in the brain
-    - SILENT : True/ False, Silent or Eloquant
-    - COMORBIDITIES : does the patient has commorbidity
-"""
 
 def random_date(start, end):
     """
@@ -27,6 +21,16 @@ def random_date(start, end):
     int_delta = (delta.days * 24 * 60 * 60) + delta.seconds
     random_second = randrange(int_delta)
     return start + timedelta(seconds=random_second)
+
+
+def select_drugs(max:int, drugs:pd.DataFrame) -> pd.DataFrame:
+    nb_drugs = random.randint(1, max)
+    drugs_sel = np.random.choice(np.arange(10), nb_drugs, replace=False)
+    return drugs.iloc[drugs_sel]
+
+    
+
+
 
 @expose
 class ClinicalCondition:
@@ -41,9 +45,11 @@ class ClinicalCondition:
         "FREQUENCY",
         "INTENSITY",
         "DRUG_RESISTANT_EPILEPSY",
+        "MEDICATION"
     ]
     EPILEPSY_TYPE_DIST = pd.read_csv(os.path.join(DISTS_PATH, "epilepsy_type.csv"))
     EPILEPSY_FOCUS_DIST = pd.read_csv(os.path.join(DISTS_PATH, "epilepsy_focus.csv"))
+    DRUGS = pd.read_csv(BASE_PATH + "docs/drugs/drugs_top10.csv", index_col=0)
     
     def __init__(self, fix_inputs, patientdemos) -> None:
         self.fix_inputs = fix_inputs if fix_inputs is not None else {}
@@ -111,6 +117,17 @@ class ClinicalCondition:
     @staticmethod
     def sample_DRE(attr, patientdemos):
         return np.random.choice(["yes", "no"], p=[1/2, 1/2])
+    
+
+
+
+    @staticmethod
+    def sample_medication(attr, patientdemos):
+        if("DRUG_RESISTANT_EPILEPSY" not in attr):
+            raise ValueError("To define the medication we need to know if the patient is DRE")
+        dre = attr["DRUG_RESISTANT_EPILEPSY"]
+        drugs = select_drugs(1 if dre == 'no' else 6, ClinicalCondition.DRUGS).to_dict("records")
+        return drugs
 
 
     SAMPLE_FUNCS = {
@@ -123,6 +140,7 @@ class ClinicalCondition:
         "FREQUENCY": sample_frequency,
         "INTENSITY": sample_intensity,
         "DRUG_RESISTANT_EPILEPSY" : sample_DRE,
+        "MEDICATION": sample_medication
     }
 
     
