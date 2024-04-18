@@ -5,7 +5,7 @@ from transformers import (AutoModel,
                           AutoModelForCausalLM,
                           LlamaForCausalLM)
 
-
+import vllm
 import os
 if("API_KEY" not in os.environ):
     print("Missing API key in .env file.")
@@ -69,17 +69,29 @@ class GenerationArg():
                  temperature:float=1,
                  topk:int=1,
                  topp:float=1,
-                 max_new_token:int=1
+                 max_new_token:int=1,
+                 presence_penalty:float=0.0,
+                 frequency_penalty:float=1.0,
+                 use_beam_search:bool=False,
+                 logprobs:float=5,
+                 best_of:int=1
                  ) -> None:
         self.attr = {
             "temperature" : temperature,
             "top_k" : topk,
             "top_p" : topp,
-            "max_new_tokens" : max_new_token
+            "max_new_tokens" : max_new_token,
+            "presence_penalty" : 0.0,
+            "frequency_penalty" : 1.0,
+            "use_beam_search" : False,
+            "logprobs" : 5,
+            "best_of" : 1
         }
 
         for n, v in self.attr.items():
             setattr(self, n, v)
+
+        self.sampling_params = vllm.SamplingParams(**self.attr)
 
     def __dict__(self):
         return self.attr
