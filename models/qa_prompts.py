@@ -2,37 +2,81 @@ QA_PROMPTS = {
     "direct_answer_align" : {
         "system": "You are a medical doctor taking the US Medical Licensing Examination. You need to demonstrate your understanding of basic and clinical science, medical knowledge, and mechanisms underlying health, disease, patient care, and modes of therapy. Show your ability to apply the knowledge essential for medical practice. For the following multiple-choice question, select one correct answer from A to E. Base your answer on the current and standard practices referenced in medical guidelines.",
         "shots": [ ## 3 samples
-            """-user
-            Question : Which of the following is the major role of the neurologist after a diagnosis of psychogenic nonepileptic events?,
-                    A. appropriately weaning antiepileptic drugs
-                    B. describing events in ambiguous terms
-                    C. ensuring that patients continue to refrain from driving a motor vehicle
-                    D. ordering follow-up EEG in 6 to 12 months
-                    E. prescribing a selective serotonin reuptake inhibitor or other antidepressant
+            """-user: 
+                Question :  A 63-year-old woman is hospitalized with herpes simplex virus encephalitis. Which of the following EEG patterns is most likely to be seen in this patient?
+                    A. burst suppression
+                    B. generalized periodic discharges
+                    C. periodic lateralizing discharges
+                    D. small sharp spikes
+                    E. stimulus-induced, rhythmic, periodic, or ictal discharges
+                -assistant:
+                Answer : C<|STOP|>"""
+                ,
+                """-user:
+                Question :  Which of the following EEG patterns is rarely seen in normal patients and has a high specificity for temporal lobe epilepsy?
+                    A. 14 and 6 positive spikes
+                    B. diffuse slow activity
+                    C. rhythmic temporal delta
+                    D. triphasic waves
+                    E. wicket spikes
+                -assistant:
+                Answer : C<|STOP|>"""
+                ,
+                """-user:
+                Question :  In addition to a risk of major congenital malformations, which of the following antiepileptic drugs is also associated with an elevated risk of autism spectrum disorders and lower IQ at age 6?
+                    A. carbamazepine
+                    B. lamotrigine
+                    C. phenobarbital
+                    D. phenytoin
+                    E. valproate
+                -assistant:
+                Answer : E<|STOP|>"""
+            ],
+            "q_form": "-user\nQuestion : {q}\n-assistant:\nAnswer : "
+    },
+    "1cot_answer_align": {
+        "system": """You are a medical doctor taking the US Medical Licensing Examination. You need to demonstrate your understanding of basic and clinical science, medical knowledge, and mechanisms underlying health, disease, patient care, and modes of therapy. Show your ability to apply the knowledge essential for medical practice. For the following multiple-choice question, select one correct answer from A to E. Base your answer on the current and standard practices referenced in medical guidelines.
+            Let's think step by step. You will end by telling the letter of the corresponding answer.
+            """,
+        "shots": [
+            """-user: 
+            Question :  A 63-year-old woman is hospitalized with herpes simplex virus encephalitis. Which of the following EEG patterns is most likely to be seen in this patient?
+                A. burst suppression
+                B. generalized periodic discharges
+                C. periodic lateralizing discharges
+                D. small sharp spikes
+                E. stimulus-induced, rhythmic, periodic, or ictal discharges
             -assistant:
-            Answer : A<|STOP|>""",
+            Answer :  Periodic lateralizing discharges are EEG abnormalities commonly seen in certain scenarios, including herpes encephalitis. Other conditions in which periodic lateralizing discharges are seen include focal brain lesions, nonketotic hyperglycemia, alcohol withdrawal, and theophylline exposure. Generalized periodic discharges are more commonly seen in anoxic brain injury, Creutzfeldt-Jakob disease, and other diffuse processes. Stimulus-induced, rhythmic, periodic, or ictal discharges (SIRPIDs) are most commonly seen in critically ill patients, even those without neurologic illness. Burst suppression is typically seen in anoxic encephalopathy or in the setting of certain medications (eg, propofol, barbiturates).
+            Therefore, the correct answer is  C.<|STOP|>"""
+            ,
             """-user:
-            Question : Deep brain stimulation for drug-resistant epilepsy targets which of the following structures?
-                    A. anterior nucleus of the thalamus
-                    B. centromedian nucleus of the thalamus
-                    C. cingulate gyrus
-                    D. hippocampus
-                    E. internal segment of the globus pallidus
+            Question :  Which of the following EEG patterns is rarely seen in normal patients and has a high specificity for temporal lobe epilepsy?
+                A. 14 and 6 positive spikes
+                B. diffuse slow activity
+                C. rhythmic temporal delta
+                D. triphasic waves
+                E. wicket spikes
             -assistant:
-            Answer : A<|STOP|>""",
+            Answer :  Of the options listed above, rhythmic temporal delta activity is most suggestive of temporal lobe epilepsy. While sensitivity for this finding is not especially high, it is rarely seen outside of the context of temporal lobe seizures and therefore carries high specificity. Triphasic waves are most commonly seen in patients with metabolic encephalopathy. Diffuse slow activity is seen in patients with traumatic brain injury, subarachnoid hemorrhage, toxic-metabolic encephalopathies, and other processes that affect the brain more diffusely. Wicket spikes and 14 and 6 positive spikes are considered normal EEG variants seen in older adults and adolescents, respectively.
+            Therefore, the correct answer is  C.<|STOP|>"""
+            ,
             """-user:
-            Question : According to the International League Against Epilepsy\’s 2010 revision of its seizure classification system, which of the following factors is most helpful in initially focusing the scope of diagnostic possibilities for specific electroclinical syndromes?
-                    A. age at onset
-                    B. family seizure history
-                    C. frequency of spells
-                    D. history of toxic exposure
-                    E. severity of the disorder
+            Question :  In addition to a risk of major congenital malformations, which of the following antiepileptic drugs is also associated with an elevated risk of autism spectrum disorders and lower IQ at age 6?
+                A. carbamazepine
+                B. lamotrigine
+                C. phenobarbital
+                D. phenytoin
+                E. valproate
             -assistant:
-            Answer : A<|STOP|>"""
+            Answer :  Women treated with valproate (either monotherapy or in combination with other antiepileptics) are at elevated risk of giving birth to children with major congenital malformations. In addition, of the medications listed above, valproate is also associated with a higher risk of neurodevelopmental effects in children exposed during pregnancy, as measured by lower IQ at age 6 and a higher risk of autism spectrum disorders.
+            Therefore, the correct answer is  E.<|STOP|>"""
         ],
         "q_form": "-user\nQuestion : {q}\n-assistant:\nAnswer : "
+        
+
     },
-    "direct_answer_align":{
+    "cot_answer_align":{
         "system": """You are a medical doctor taking the US Medical Licensing Examination. You need to demonstrate your understanding of basic and clinical science, medical knowledge, and mechanisms underlying health, disease, patient care, and modes of therapy. Show your ability to apply the knowledge essential for medical practice. For the following multiple-choice question, select one correct answer from A to E. Base your answer on the current and standard practices referenced in medical guidelines.
             Let's think step by step. You will end by telling the letter of the corresponding answer.
             """,
