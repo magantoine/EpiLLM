@@ -2,6 +2,8 @@ from decorators import expose
 from typing import (List, Callable, Any, Dict)
 from models import Model
 import json
+from tqdm.notebook import tqdm
+
 
 OFFSET_A = 65
 letters = {i - OFFSET_A: chr(i) for i in range(OFFSET_A, OFFSET_A+26)}
@@ -25,10 +27,16 @@ class MCQBenchmark():
     def assess(self,
                model: Model):
         ret = self.mcq.copy()
-        for q in ret:
-            formatted_prompt = self.prompt_template(q["question"])
-            answer = model.query(formatted_prompt)
-            q["prediction"] = answer
+        if(hasattr(model, "use_vllm") and model.use_vllm):
+            ## process them all at once for vllm speedup
+            return model.query(
+                [self.prompt_template(q["question"]) for q in ret]
+            )
+        else :
+            for q in tqdm(ret):
+                formatted_prompt = self.prompt_template(q["question"])
+                answer = model.query(formatted_prompt)
+                q["prediction"] = answer
         return ret
 
     @staticmethod
