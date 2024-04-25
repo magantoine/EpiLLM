@@ -14,6 +14,8 @@ from transformers import (AutoModelForCausalLM,
                           AdamW,
                           get_linear_schedule_with_warmup)
 
+from typing import List
+
 if("DEVICE" in os.environ):
     DEVICE = torch.device(os.environ["DEVICE"])
     print("Running on device : ", DEVICE)
@@ -25,6 +27,54 @@ else :
 def prepare_datasets(datasets, tok):
     pass
 
+
+
+def train(datasets: List[str],
+          save_dir: str,
+          checkpoint: str,
+          base_checkpoint: str,
+          lr: float=2e-5,
+          eps: float=1e-8,
+          wrmp: float=.1,
+          batch_size: int=4,
+          n_train_epoch: int=1) -> None:
+    
+
+    llm = AutoModelForCausalLM.from_pretrained(base_checkpoint)
+    tok = AutoTokenizer.from_pretrained(base_checkpoint)
+    
+    data_collator = DataCollatorWithPadding(tok)
+    tokenized_datasets = prepare_datasets(datasets, tok)
+
+    total_steps = 2 * math.ceil(len(tokenized_datasets["train"]) / batch_size)
+    warmup_steps = int(wrmp * total_steps)
+
+    optimizer = AdamW(llm.parameters(),
+                  lr = lr, 
+                  eps = eps
+                )
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_training_steps=total_steps, num_warmup_steps=warmup_steps)
+    
+
+    training_args = TrainingArguments(
+                output_dir=save_dir / checkpoint,
+                per_device_train_batch_size=batch_size,
+                per_device_eval_batch_size=batch_size,
+                num_train_epochs=n_train_epoch, ## only 1 epoch
+                evaluation_strategy="epoch",
+                save_strategy="epoch",
+                remove_unused_columns=False,
+            )
+
+    trainer = Trainer(
+        llm,
+        training_args,
+        train_dataset=tokenized_datasets["train"],
+        eval_dataset=tokenized_datasets["validation"],
+        data_collator=data_collator,
+        tokenizer=tok,
+        optimizers=(optimizer, scheduler),        
+    )
 
 
 
@@ -42,59 +92,25 @@ def dispatch():
                        
     
     args = parser.parse_args()
-    
-    ## check dataset
+
     print("-", "Training with : ", ", ".join(args.datasets))
 
     ## check the same dir
     save_dir = Path(args.save_dir)
     if(not save_dir.exists()):
-        os.makedirs(args.save_dir)
-        print("-", f"Created {args.save_dir} directory")
+        os.makedirs(save_dir)
+        print("-", f"Created {save_dir} directory")
     
-    print("-", "Will save at ", Path(args.save_dir) / args.checkpoint)
+    print("-", "Will save at ", Path(save_dir) / args.checkpoint)
 
     if(not (save_dir / args.base_checkpoint).exists()):
         print("-", args.base_checkpoint, "is not a local checkpoint")
     
     print("-", "Will train from", args.base_checkpoint, "checkpoint")
 
-
-    llm = AutoModelForCausalLM.from_pretrained(args.base_checkpoint)
-    tok = AutoTokenizer.from_pretrained(args.base_checkpoint)
+    ## dispatch
+    train(**vars(args))
     
-    data_collator = DataCollatorWithPadding(tok)
-    tokenized_datasets = prepare_datasets(args.datasets, tok)
-
-    total_steps = 2 * math.ceil(len(tokenized_datasets["train"]) / args.batch_size)
-    warmup_steps = int(args.wrmp * total_steps)
-
-    optimizer = AdamW(llm.parameters(),
-                  lr = args.lr, 
-                  eps = args.eps
-                )
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_training_steps=total_steps, num_warmup_steps=warmup_steps)
-    
-
-    training_args = TrainingArguments(
-                output_dir=save_dir / args.checkpoint,
-                per_device_train_batch_size=args.batch_size,
-                per_device_eval_batch_size=args.batch_size,
-                num_train_epochs=args.n_train_epochà, ## only 1 epoch
-                evaluation_strategy="epoch",
-                save_strategy="epoch",
-                remove_unused_columns=False,
-            )
-
-    trainer = Trainer(
-        llm,
-        training_args,
-        train_dataset=tokenized_datasets["train"],
-        eval_dataset=tokenized_datasets["validation"],
-        data_collator=data_collator,
-        tokenizer=tok,
-        optimizers=(optimizer, scheduler),        
-    )
 
 if __name__ == "__main__":
     dispatch()
