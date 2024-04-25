@@ -21,4 +21,15 @@ read api
 
 echo "API_KEY=\"$api\"" >> .env
 
+device=''
+unamestr=$(uname)
+if [[ "$unamestr" == 'Linux' ]]; then
+   device="cuda"
+elif [[ "$unamestr" == 'Darwin' ]]; then
+   device="mps"
+fi
+
+echo "DEVICE=\"$device\"" >> .env
+
+
 ./dependencies.sh
