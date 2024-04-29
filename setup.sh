@@ -30,6 +30,6 @@ elif [[ "$unamestr" == 'Darwin' ]]; then
 fi
 
 echo "DEVICE=\"$device\"" >> .env
-
+echo "OS_TYPE=\"$unamestr\"" >> .env
 
 ./dependencies.sh
