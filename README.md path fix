@@ -219,7 +219,7 @@ res = testbench(benchnames=benchnames,
 Result example :
 
 
-![result dataframe](static/dataframe_testbench.png)
+![result dataframe](./static/dataframe_testbench.png)
 
 
 
