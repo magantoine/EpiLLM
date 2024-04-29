@@ -4,13 +4,17 @@ from transformers import (AutoModel,
                           AutoTokenizer,
                           AutoModelForCausalLM,
                           LlamaForCausalLM)
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
+import os
 
-import vllm
+if("OS_TYPE" not in os.environ):
+    raise ValueError("Project is not properly setup (missing OS_TYPE in .env). Please run setup.sh")
+if(os.environ["OS_TYPE"] == 'Linux'):
+    vllm = __import__("vllm") ## conditional import
 import torch
-import os
-import hashlib
-import os
 
+import hashlib
 if("API_KEY" not in os.environ):
     print("Missing API key in .env file.")
     API_KEY = None
@@ -183,17 +187,3 @@ class HF_LLM(Model):
             raise ValueError("Can't change the value of attribute use_vllm.")
         self.arg = narg
     
-
-
-
-import gc
-from vllm.model_executor.parallel_utils.parallel_state import destroy_model_parallel
-import torch.distributed
-
-@expose
-def cleanup_model(model: HF_LLM) -> None:
-    destroy_model_parallel()
-    del model
-    gc.collect()
-    torch.cuda.empty_cache()
-    torch.distributed.destroy_process_group()
