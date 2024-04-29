@@ -1,7 +1,18 @@
 .DS_Store
-docs/*
+# Not sharing data
+docs/* 
+
+# caches 
 **/__pycache__
+
+# generated automatically
 **/__init__.py
 */__init__.py
+
+# scrapes
 scrape-research
+*_stale*
+
+# sensitive information
 .env
+
