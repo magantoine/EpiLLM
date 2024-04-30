@@ -16,3 +16,6 @@ scrape-research
 # sensitive information
 .env
 
+
+# not pushing the model checkpoints
+checkpoints/**
