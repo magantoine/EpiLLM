@@ -221,10 +221,15 @@ def train_cpt(datasets: List[str],
         data_collator=data_collator,
         eval_dataset=test_dataset
     )
+
+    ## loss for next token prediction
     trainer.compute_loss = lambda model, inputs : compute_loss(model, inputs, tok)
+    
+    ## training launch
     print("LAUNCH TRAINING")
     trainer.train()
-
+    
+    ## save final model into the inputed save_dir/checkpoint
     trainer.save_model()
 
 
