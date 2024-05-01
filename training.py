@@ -1,48 +1,52 @@
 import argparse
 from pathlib import Path
 import os
-import math
 import torch
+from typing import (List, Tuple, Dict)
+from datasets import (Dataset, concatenate_datasets)
+from models import (get_pmc_patients, get_pubmed_ds, get_mimic_iv_notes)
+from torch.nn.functional import one_hot
+from torch.nn import CrossEntropyLoss
 from transformers import (AutoModelForCausalLM,
                           AutoTokenizer,
                           Trainer,
                           TrainingArguments,
                           DataCollatorWithPadding)
-from typing import (List, Tuple, Callable, Dict)
-from datasets import (Dataset, concatenate_datasets)
-from models import (get_pmc_patients, get_pubmed_ds, get_mimic_iv_notes)
-from torch.nn.functional import one_hot
-from torch.nn import CrossEntropyLoss
 
 from dotenv import load_dotenv
 load_dotenv()
 
+
+### loading device
 if("DEVICE" in os.environ):
     DEVICE = torch.device(os.environ["DEVICE"])
     print("Running on device : ", DEVICE)
 else :
     print("You need to set the device in the .env file. Resuming on CPU.")
 
+
+### functions to load datasets
+KNOWN_DATASETS = ["pubmed", "pmc", "mimic"]
 DATAFUNCS = {
     "mimic": lambda : get_mimic_iv_notes("disc"),
     "pmc": get_pmc_patients,
     "pubmed": lambda : get_pubmed_ds(split="[:]", flag_filter=True)
 }
 
-INPUT_TYPES = {
-    "lr" : float,
-    "eps": float,
-    "wrmp": float,
-    "batch_size": int,
-    "n_train_epoch": int,
-    "verbose": bool
+### training arguments
+TRAIN_CONFIG = {
+    "adam_beta1": [0.9, "Adam Beta 1"],
+    "adam_beta2": [0.95, "Adam Beta 2"],
+    "adam_epsilon": [10e-5, "Adam Epsilon"],
+    "max_grad_norm": [1.0, "Maximum norm for grad"],
+    "lr_scheduler_type": ["cosine", "Type of scheduler for learning rate"],
+    "wrmp": [0.3, "warmup ration"],
+    "lr": [3e-4, "Learning rate"],
+    "weight_decay": [0.1, "weight_decay"],
 }
 
-KNOWN_DATASETS = ["pubmed", "pmc", "mimic"]
-VOCAB_SIZE = {
-    "gpt2": 50257,
-    "epfl-llm/meditron-7b": 32017
-}
+
+############################### DATA LOADING / PROCESSING #########################################################
 
 def tokenize_sample(sample: Dict[str, str],
                     tok: AutoTokenizer) -> Dict[str, torch.Tensor]:
@@ -61,6 +65,7 @@ def tokenize_sample(sample: Dict[str, str],
     tokenized["input_ids"] = tokenized["input_ids"].squeeze(0) ## sample by sample : squeeze
     tokenized["attention_mask"] = tokenized["attention_mask"].squeeze(0) ## sample by sample : squeeze
     return tokenized
+
 
 def prepare_datasets(datasets: List[str],
                      tok: AutoTokenizer,
@@ -88,8 +93,13 @@ def prepare_datasets(datasets: List[str],
     train_datasets, test_datasets = zip(*[(d["train"], d["test"]) for d in splitted])
     return concatenate_datasets(train_datasets), concatenate_datasets(test_datasets)
 
+
+
+################################### TRAINING ############################################################################
+
 def compute_loss(model: AutoModelForCausalLM,
-                 inputs: Dict[str, str]) -> torch.Tensor:
+                 inputs: Dict[str, str],
+                 tokenizer: AutoTokenizer) -> torch.Tensor:
     """
         Override of loss computation.
 
@@ -100,31 +110,70 @@ def compute_loss(model: AutoModelForCausalLM,
         returns :
             loss value, torch tensor with grad_fn
     """
+    VOCAB_SIZE = len(tokenizer)
     predictions = model(**inputs).logits ## model run and extract logits
     loss = CrossEntropyLoss()(predictions.float(),
                               one_hot(
                                   inputs["input_ids"],
-                                  num_classes=VOCAB_SIZE["epfl-llm/meditron-7b"]
+                                  num_classes=VOCAB_SIZE
                             ).float()
                     ) ## Loss computation, comparing the logits and the one hot distrib
     return loss
 
 def train_sft(**kwargs) -> None:
+    """
+        Supervised Fine Tuning (SFT) : used for simple alignement for tasks that
+        are fairly easy to determine (MCQ, etc...)
+    """
     raise NotImplementedError("SFT not yet implem")
 
 def train_dpo(**kwargs) -> None:
+    """
+        Direct Preference Optimization (DPO) : used for alignement tasks that
+        are easy to judge but hard to formalize (assistant, chat, surgery referral...)
+    """
     raise NotImplementedError("DPO not yet implem")
 
 def train_cpt(datasets: List[str],
           save_dir: str,
           checkpoint: str,
           base_checkpoint: str,
-          lr: float=2e-5,
-          eps: float=1e-8,
-          wrmp: float=.1,
-          batch_size: int=4,
+          lr: float,
+          wrmp: float,
+          adam_beta1: float,
+          adam_beta2: float,
+          adam_epsilon: float,
+          weight_decay: float,
+          max_grad_norm: float,
+          lr_scheduler_type: str,
           n_train_epoch: int=1,
+          batch_size: int=4,
           verbose: bool=True) -> None:
+    """
+        Continued Pre-Training (CPT) : we do next token prediction on decided datasets
+        for domain adaptation and teach the model about the main concepts of epilepsy,
+        diagnostics of patients, surgery, and research related topics.
+
+        args :
+            - save_dir (str) : save_dir
+            - checkpoint (str) : checkpoint
+            - base_checkpoint (str) : base_checkpoint
+            - lr (float) : lr
+            - wrmp (float) : wrmp
+            - adam_beta1 (float) : adam_beta1
+            - adam_beta2 (float) : adam_beta2
+            - adam_epsilon (float) : adam_epsilon
+            - weight_decay (float) : weight_decay
+            - max_grad_norm (float) : max_grad_norm
+            - lr_scheduler_type (str) : lr_scheduler_type
+            - n_train_epoch (int) : n_train_epoch
+            - batch_size (int) : batch_size
+            - verbose (bool) : verbose
+
+        return :
+            - None
+        
+    """
           
     
     print("-", "Loading model and tokenize") if verbose else None
@@ -154,14 +203,14 @@ def train_cpt(datasets: List[str],
                 fp16=True,
                 save_steps=5_000,
                 optim="adamw_torch_fused", # LLama 2 
-                adam_beta1=0.9, # LLama 2 Meditron 7B
-                adam_beta2=0.95, # LLama 2 Meditron 7B
-                adam_epsilon=10e-5, # LLama 2 
-                weight_decay=0.1, # Meditron 7B
-                max_grad_norm=1.0, # Meditron 7B
-                lr_scheduler_type="cosine", # Meditron 7B
+                adam_beta1=adam_beta1, # LLama 2 Meditron 7B
+                adam_beta2=adam_beta2, # LLama 2 Meditron 7B
+                adam_epsilon=adam_epsilon, # LLama 2 
+                weight_decay=weight_decay, # Meditron 7B
+                max_grad_norm=max_grad_norm, # Meditron 7B
+                lr_scheduler_type=lr_scheduler_type, # Meditron 7B
                 warmup_ratio=wrmp, # llama 2 (3%)
-                learning_rate=3e-4, # Meditron 7B
+                learning_rate=lr, # Meditron 7B
         )
 
     trainer = Trainer(
@@ -172,11 +221,30 @@ def train_cpt(datasets: List[str],
         data_collator=data_collator,
         eval_dataset=test_dataset
     )
-    trainer.compute_loss = compute_loss
+    trainer.compute_loss = lambda model, inputs : compute_loss(model, inputs, tok)
     print("LAUNCH TRAINING")
     trainer.train()
 
     trainer.save_model()
+
+
+
+def check_datasets(datasets, verbose):
+    print("-", "Training with : ", ", ".join(datasets)) if verbose else None
+    if(datasets == "all"):
+        datasets = KNOWN_DATASETS
+    if(any(d not in KNOWN_DATASETS for d in datasets)):
+        raise ValueError(f"Dataset doesn't exist, must be one of : {KNOWN_DATASETS}")
+    
+    return datasets
+
+def check_save_dir(save_dir, verbose):
+    save_dir = Path(save_dir)
+    if(not save_dir.exists()):
+        os.makedirs(save_dir)
+        print("-", f"Created {save_dir} directory") if verbose else None
+
+    return save_dir
 
 
 def dispatch() -> None:
@@ -185,54 +253,40 @@ def dispatch() -> None:
     parser.add_argument("--save_dir", help="Directory in with you save the model checkpoints", default="checkpoints")
     parser.add_argument("--checkpoint", help="Name of the checkpoint folder", default="checkpoint")
     parser.add_argument("--base_checkpoint", help="Name of the base model", default="epfl-llm/meditron-7b")
-    parser.add_argument("--lr", help="Learning rate", default=2e-5)
-    parser.add_argument("--eps", help="Epsilon", default=1e-8)
-    parser.add_argument("--wrmp", help="Warmup percentgage", default=.1)
-    parser.add_argument("--batch_size", help="Batch size", default=4)
-    parser.add_argument("--n_train_epoch", help="Number of train epoch", default=1)
-    parser.add_argument("--verbose", help="Verbose", default=True)
+    parser.add_argument("--batch_size", help="Batch size", default=4, type=int)
+    parser.add_argument("--verbose", help="Verbose", default=True, type=float)
+    parser.add_argument("--n_train_epoch", help="Number of train epoch", default=1, type=int)
     parser.add_argument("--type", help="Type of training in ['CPT', 'SFT', 'DPO']", default="CPT")
-                       
+
+    for arg in TRAIN_CONFIG:
+        parser.add_argument(f"--{arg}", help=TRAIN_CONFIG[arg][1], default=TRAIN_CONFIG[arg][0])                    
     
     args = parser.parse_args()
 
-    print("-", "Training with : ", ", ".join(args.datasets)) if args.verbose else None
-    if(args.datasets == "all"):
-        args.datasets = KNOWN_DATASETS
-    if(any(d not in KNOWN_DATASETS for d in args.datasets)):
-        raise ValueError(f"Dataset doesn't exist, must be one of : {KNOWN_DATASETS}")
+    ## check args
+    args.datasets = check_datasets(args.datasets, args.verbose)
+    save_dir = Path(check_save_dir(args.save_dir, args.verbose))
 
-    ## check the same dir
-    save_dir = Path(args.save_dir)
-    if(not save_dir.exists()):
-        os.makedirs(save_dir)
-        print("-", f"Created {save_dir} directory") if args.verbose else None
-    
-    print("-", "Will save at ", Path(save_dir) / args.checkpoint) if args.verbose else None
-
+    print("-", "Will save at ", save_dir / args.checkpoint) if args.verbose else None
     if(not (save_dir / args.base_checkpoint).exists()):
         print("-", args.base_checkpoint, "is not a local checkpoint") if args.verbose else None
-    
     print("-", "Will train from", args.base_checkpoint, "checkpoint") if args.verbose else None
 
     ## dispatch
     kwargs = vars(args)
-    for input, cast in INPUT_TYPES.items():
-        kwargs[input] = cast(kwargs[input])
-    
-
-    match args.type:
+    runtype = kwargs["type"]
+    del kwargs["type"]
+    match runtype:
         case "DPO":
-            del kwargs["type"]
             train_dpo(**kwargs)
         case "SFT":
-            del kwargs["type"]
             train_sft(**kwargs)
         case "CPT":
-            del kwargs["type"]
             train_cpt(**kwargs)
         case _ :
-            raise ValueError("Unknown training type, must be one of DPO, SFT, CPT")
+            raise ValueError(
+                "Unknown training type, must be one of DPO, SFT, CPT"
+            )
     
 
 if __name__ == "__main__":
