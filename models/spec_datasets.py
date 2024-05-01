@@ -38,7 +38,10 @@ def get_usable_PMC_patients():
 
 @expose
 def get_pmc_patients():
-    return datasets.load_from_disk("docs/pmc_patiens_fil.hf")
+    return datasets.load_from_disk("docs/pmc_patiens_fil.hf")\
+        .rename_column("patient", "text")\
+        .select_columns(["text"])
+        
 
 
 
@@ -122,7 +125,9 @@ def get_pubmed_ds(split, flag_filter=False, start_year=None):
             else :
                 print("Skipping : ", uround(pub[0]), SPACE, end="\r")
     
-    return datasets.Dataset.from_generator(pubmed_stream, features=context_feat)
+    return datasets.Dataset.from_generator(pubmed_stream, features=context_feat)\
+        .rename_column("abstract", "text")\
+        .select_columns(["title", "text"])
 
 
 discharge_path = "docs/mimic-iv-note-deidentified-free-text-clinical-notes-2.2/note/discharge.csv"

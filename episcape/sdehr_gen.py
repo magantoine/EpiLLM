@@ -32,7 +32,7 @@ class SDeHRGenerator():
     def __init__(self, temperature, version) -> None:
         self.api_key = API_KEY
         openai.api_key = API_KEY
-        print("LOADED API KEY : ", self.api_key)
+        # print("LOADED API KEY : ", self.api_key)
         self.temperature = temperature
         self.version = version
 
