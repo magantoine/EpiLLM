@@ -19,3 +19,6 @@ scrape-research
 
 # not pushing the model checkpoints
 checkpoints/**
+
+
+notebooks/Q_*.ipynb
