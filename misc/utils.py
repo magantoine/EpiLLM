@@ -1,7 +1,10 @@
 from decorators import expose
 from matplotlib import pyplot as plt
 import pandas as pd
-from typing import List, Dict
+from typing import List, Dict, Callable, Any
+import os
+import pickle
+from evaluation import MCQBenchmark
 
 @expose
 def plot_age_pyramid(df):
@@ -53,3 +56,27 @@ def write_values(gens: List[str],
     with open(fpath, 'w') as md:
         md.write((f"\n\n\n{psep*seprep}\n\n\n").join(gens))
     
+
+
+
+BENCHMARKS_PATHS = {
+    "MCQ" : "docs/benchmarks/mcq40/processed.json",
+    "aes7" : "docs/benchmarks/self_assessment/aes7_processed.json",
+    "aes8" :  "docs/benchmarks/self_assessment/aes8_processed.json",
+}
+
+@expose
+def load_pickle(path:str,
+                available_benchmarks: List[str]=["aes7", "aes8"],
+                procfunc: Callable[[Any], List[str]]=lambda obj:[x.outputs[0].text for x in obj]):
+    
+    with open(path, "rb") as f:
+        obj = pickle.load(f)
+    gens = procfunc(obj)
+
+    for benchmark in available_benchmarks:
+        if(benchmark in path):
+            print("Associated benchmark : ", benchmark)
+            mcqs = MCQBenchmark(BENCHMARKS_PATHS[benchmark], lambda:()).mcq
+
+    return [(mcq["question"], mcq["answer"], gen) for (mcq, gen) in zip(mcqs, gens)]
