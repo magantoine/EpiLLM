@@ -241,11 +241,8 @@ python training.py --datasets pmc \
             --save_dir checkpoints \
             --checkpoint epillm_tv0 \
             --base_checkpoint epfl-llm/meditron-7b \
-            --lr 2e-5 \
-            --eps 1e-5 \
-            --wrmp 0.1 \
             --batch_size 4 \
-            --n_train_epoch 1 \
+            --n_train_epoch 1
 ```
 
 
@@ -258,8 +255,6 @@ python training.py --datasets pmc \
 - **wrmp** : *Warmup percentgage*, default=`0.1`
 - **batch_size** : *Batch size*, default=`4`
 - **n_train_epoch** : *Number of train epoch*, default=`1`
-
-
 
 
 
