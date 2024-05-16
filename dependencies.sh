@@ -21,8 +21,7 @@ echo "from .utils import *" >> misc/__init__.py
 
 rm models/__init__.py
 touch models/__init__.py
-echo "from .baseline import *
-from .llms import *
+echo "from .llms import *
 from .model_utils import *
 from .spec_datasets import *" >> models/__init__.py
 
