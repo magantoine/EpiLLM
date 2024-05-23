@@ -16,6 +16,14 @@ from transformers import (AutoModelForCausalLM,
 from dotenv import load_dotenv
 load_dotenv()
 
+## CONNECTING TO HUGGINGFACE API
+import huggingface_hub
+
+with open("/tmp/envfile", 'r') as f:
+    HF_TOKEN = f.read().split("=")[1][1:-1]
+
+print(HF_TOKEN)
+huggingface_hub.login(HF_TOKEN)
 
 ### loading device
 if("DEVICE" in os.environ):
