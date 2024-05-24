@@ -34,6 +34,8 @@ else :
 
 
 ### functions to load datasets
+SEED = 42
+LLAMA2_MODEL_MAX_LENGTH = 4096
 KNOWN_DATASETS = ["pubmed", "pmc", "mimic"]
 DATAFUNCS = {
     "mimic": lambda : get_mimic_iv_notes("disc"),
@@ -69,7 +71,13 @@ def tokenize_sample(sample: Dict[str, str],
             - {'input_ids': torch.tensor([...]), 'attention_mask': torch.tensor([...])}
     """
     ## context length : 2048 for meditron-7b, 512 for gpt2
-    tokenized = tok(sample["text"], return_tensors="pt", max_length=2048, truncation=True, padding="max_length")
+    tokenized = tok(
+        sample["text"],
+        return_tensors="pt",
+        max_length=min(tok.model_max_length, LLAMA2_MODEL_MAX_LENGTH),
+        truncation=True,
+        padding="max_length"
+    )
     tokenized["input_ids"] = tokenized["input_ids"].squeeze(0) ## sample by sample : squeeze
     tokenized["attention_mask"] = tokenized["attention_mask"].squeeze(0) ## sample by sample : squeeze
     return tokenized
@@ -97,7 +105,7 @@ def prepare_datasets(datasets: List[str],
         .map(lambda s : tokenize_sample(s, tok) if tokenize else s)\
         .select_columns(["input_ids", "attention_mask"]) for dataset in datasets
     ] ## load and tokenize each dataset    
-    splitted = [dataset.train_test_split(test_ratio) for dataset in datasets] ## split each of them
+    splitted = [dataset.train_test_split(test_ratio, seed=SEED) for dataset in datasets] ## split each of them
     train_datasets, test_datasets = zip(*[(d["train"], d["test"]) for d in splitted])
     return concatenate_datasets(train_datasets), concatenate_datasets(test_datasets)
 
@@ -185,18 +193,17 @@ def train_cpt(datasets: List[str],
           
     
     print("-", "Loading model and tokenize") if verbose else None
+    tok = AutoTokenizer.from_pretrained(base_checkpoint)
     llm = AutoModelForCausalLM.from_pretrained(
         base_checkpoint,
-        torch_dtype=torch.bfloat16, # recommended on https://huggingface.co/docs/transformers/en/model_doc/llama2#usage-tips
-        load_in_8bit=False,)
-    tok = AutoTokenizer.from_pretrained(base_checkpoint)
-    tok.add_special_tokens({'pad_token': '[PAD]'})
-
+        load_in_8bit=False
+    )
+    tok.pad_token = tok.eos_token
     data_collator = DataCollatorWithPadding(tok)
     
     print("-", "Loading dataset") if verbose else None
     train_dataset, test_dataset = prepare_datasets(datasets, tok, tokenize=True)
-    train_dataset = Dataset.from_dict(train_dataset[:1])
+    # train_dataset = Dataset.from_dict(train_dataset[:2]) ## for subselection
     print("Training dataset : ") if verbose else None
     print(train_dataset) if verbose else None
     
