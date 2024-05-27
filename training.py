@@ -16,12 +16,11 @@ from transformers import (AutoModelForCausalLM,
 from dotenv import load_dotenv
 load_dotenv()
 
+
 ## CONNECTING TO HUGGINGFACE API
 import huggingface_hub
-
 with open("/tmp/envfile", 'r') as f:
     HF_TOKEN = f.read().split("=")[1][1:-1]
-
 print(HF_TOKEN)
 huggingface_hub.login(HF_TOKEN)
 
@@ -310,4 +309,10 @@ def dispatch() -> None:
     
 
 if __name__ == "__main__":
+    print("#"*200)
+    print("Current user id : ", os.getuid())
+    print("Current user name : ", os.popen('whoami').read())
+    print("Current groups : ", os.popen('groups').read())
+    print("#"*200)
+
     dispatch()
