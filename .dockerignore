@@ -8,6 +8,13 @@ docs/paper
 docs/results
 docs/mimic-iv-note-deidentified-free-text-clinical-notes-2.2/note
 
+## git
+.git
+
+## caches
+__pycache__
+**/__pycache__
+
 ## in modules
 static/
 scrape-research/
