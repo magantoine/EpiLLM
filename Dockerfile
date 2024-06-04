@@ -1,9 +1,13 @@
 # python requirements
-FROM --platform=linux/amd64 python:3.12.1
+FROM --platform=linux/amd64 python:3.10
+
 # # Set default shell to /bin/bash
 SHELL ["/bin/bash", "-cu"]
 
 RUN pip install --upgrade pip
+
+RUN apt-get update
+RUN apt-get install nano
 
 
 RUN --mount=type=secret,id=my_env,dst=/tmp/my_env cat /tmp/my_env > /tmp/envfile
@@ -32,15 +36,20 @@ RUN echo "DEVICE=\"cuda\"" >> /home/magron/.env
 RUN echo "OS_TYPE=\"Darwin\"" >> /home/magron/.env
 RUN cat /home/magron/.env
 
-RUN pip install -r /home/magron/requirements.txt --no-cache-dir
+# RUN pip install -r /home/magron/requirements.txt --no-cache-dir
 RUN pip install huggingface_hub --no-cache-dir
-RUN pip install pathlib --no-cache-dir
+# RUN pip install pathlib --no-cache-dir
+# RUN pip install accelerate -U
+
+
+
 
 ## set home dir to working directory
 WORKDIR /home/magron/
 
 
 
+ENTRYPOINT ["python", "container_link.py"]
 # ENTRYPOINT ["python", "testrcp.py"]
 
 ## args : 
@@ -51,4 +60,7 @@ WORKDIR /home/magron/
 #   - batch_size : 16
 #   - n_train_epoch : 1
 
-ENTRYPOINT ["python", "training.py","--save_dir", "scratch/home/magron/checkpoints","--checkpoint", "epitron_tv0", "--datasets", "pmc", "--base_checkpoint", "meta-llama/Meta-Llama-3-8B","--batch_size", "4","--n_train_epoch", "1"]
+# ENTRYPOINT ["python", "training.py","--save_dir", "scratch/home/magron/checkpoints","--checkpoint", "epitron_tv0", "--datasets", "pmc", "--base_checkpoint", "meta-llama/Meta-Llama-3-8B","--batch_size", "2","--n_train_epoch", "1"]
+
+
+# ENTRYPOINT ["python", "training.py", "--type", "cmd"]
