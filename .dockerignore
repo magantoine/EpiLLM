@@ -1,0 +1,27 @@
+## in docs
+docs/benchmarks/
+docs/drugs/
+docs/self_assessment/
+docs/generations_llm/
+docs/graphs
+docs/paper
+docs/results
+# docs/mimic-iv-note-deidentified-free-text-clinical-notes-2.2/note
+
+## git
+.git
+
+## caches
+__pycache__
+**/__pycache__
+
+## in modules
+static/
+scrape-research/
+notebooks/
+
+## secret
+.env
+
+
+

@@ -12,10 +12,22 @@ from transformers import (AutoModelForCausalLM,
                           Trainer,
                           TrainingArguments,
                           DataCollatorWithPadding)
+import time
+from pynvml import *
 
 from dotenv import load_dotenv
 load_dotenv()
 
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+
+
+## CONNECTING TO HUGGINGFACE API
+import huggingface_hub
+with open("/tmp/envfile", 'r') as f:
+    HF_TOKEN = f.read().split("=")[1][1:-1]
+print(HF_TOKEN)
+huggingface_hub.login(HF_TOKEN)
 
 ### loading device
 if("DEVICE" in os.environ):
@@ -50,6 +62,14 @@ TRAIN_CONFIG = {
 
 ############################### DATA LOADING / PROCESSING #########################################################
 
+
+def print_gpu_utilization():
+    nvmlInit()
+    handle = nvmlDeviceGetHandleByIndex(0)
+    info = nvmlDeviceGetMemoryInfo(handle)
+    print(f"GPU memory occupied: {info.used//1024**3} GB.")
+
+
 def tokenize_sample(sample: Dict[str, str],
                     tok: AutoTokenizer) -> Dict[str, torch.Tensor]:
     """
@@ -75,6 +95,32 @@ def tokenize_sample(sample: Dict[str, str],
     return tokenized
 
 
+# def prepare_datasets(datasets: List[str],
+#                      tok: AutoTokenizer,
+#                      test_ratio: float=.2,
+#                      tokenize: bool=True) -> Tuple[Dataset, Dataset]:
+#     """
+#         Prepare the raw dataset, with tokenization and deterministic split
+#         in train and eval.
+
+#         args :
+#             - datasets (List[str]) : list of names of datasets to use
+#             - tok (AutoTokenizer) : tokenizer
+#             - test_ratio (float) : % to select to be eval dataset (deterministic)
+#             - tokenize (bool) : should it be tokenize, yes? no?
+        
+#         returns :
+#             train and test dataset
+#     """
+#     datasets = [
+#         DATAFUNCS[dataset]()\
+#         .map(lambda s : tokenize_sample(s, tok) if tokenize else s)\
+#         .select_columns(["input_ids", "attention_mask"]) for dataset in datasets
+#     ] ## load and tokenize each dataset    
+#     splitted = [dataset.train_test_split(test_ratio, seed=SEED) for dataset in datasets] ## split each of them
+#     train_datasets, test_datasets = zip(*[(d["train"], d["test"]) for d in splitted])
+#     return concatenate_datasets(train_datasets), concatenate_datasets(test_datasets)
+
 def prepare_datasets(datasets: List[str],
                      tok: AutoTokenizer,
                      test_ratio: float=.2,
@@ -88,19 +134,23 @@ def prepare_datasets(datasets: List[str],
             - tok (AutoTokenizer) : tokenizer
             - test_ratio (float) : % to select to be eval dataset (deterministic)
             - tokenize (bool) : should it be tokenize, yes? no?
-        
+
         returns :
             train and test dataset
     """
+    #datasets = [
+    #    DATAFUNCS[dataset]()\
+    #    .map(lambda s : tokenize_sample(s, tok) if tokenize else s)\
+    #    .select_columns(["input_ids", "attention_mask"]) for dataset in datasets
+    #] ## load and tokenize each dataset    
     datasets = [
-        DATAFUNCS[dataset]()\
-        .map(lambda s : tokenize_sample(s, tok) if tokenize else s)\
-        .select_columns(["input_ids", "attention_mask"]) for dataset in datasets
-    ] ## load and tokenize each dataset    
+            DATAFUNCS[dataset]()\
+            .map(lambda x : tok(x["text"], return_tensors="pt", max_length=min(tok.model_max_length, LLAMA2_MODEL_MAX_LENGTH), truncation=True, padding="max_length") if tokenize else x, batched=True)\
+            .select_columns(["input_ids", "attention_mask"])
+    for dataset in datasets]
     splitted = [dataset.train_test_split(test_ratio, seed=SEED) for dataset in datasets] ## split each of them
     train_datasets, test_datasets = zip(*[(d["train"], d["test"]) for d in splitted])
     return concatenate_datasets(train_datasets), concatenate_datasets(test_datasets)
-
 
 
 ################################### TRAINING ############################################################################
@@ -188,26 +238,31 @@ def train_cpt(datasets: List[str],
     tok = AutoTokenizer.from_pretrained(base_checkpoint)
     llm = AutoModelForCausalLM.from_pretrained(
         base_checkpoint,
-        load_in_8bit=False
+        torch_dtype=torch.bfloat16, # recommended on https://huggingface.co/docs/transformers/en/model_doc/llama2#usage-tips
+        load_in_8bit=False,
+        # low_cpu_mem_usage=True,
+        device_map="auto",
+        use_cache=False # set to true for inference
+        # attn_implementation="flash_attention_2"
     )
+    print_gpu_utilization()
     tok.pad_token = tok.eos_token
     data_collator = DataCollatorWithPadding(tok)
     
     print("-", "Loading dataset") if verbose else None
     train_dataset, test_dataset = prepare_datasets(datasets, tok, tokenize=True)
-    # train_dataset = Dataset.from_dict(train_dataset[:2]) ## for subselection
+    #train_dataset = Dataset.from_dict(train_dataset[:2]) ## for subselection
     print("Training dataset : ") if verbose else None
     print(train_dataset) if verbose else None
     
     training_args = TrainingArguments(
                 output_dir=Path(save_dir) / checkpoint,
-                per_device_train_batch_size=batch_size,
-                per_device_eval_batch_size=batch_size,
+                # per_device_train_batch_size=batch_size, # AUTO
+                # per_device_eval_batch_size=batch_size,  # AUTO
                 num_train_epochs=n_train_epoch, ## only 1 epoch
                 evaluation_strategy="epoch",
                 save_strategy="epoch",
                 remove_unused_columns=False,
-                fp16=True,
                 save_steps=5_000,
                 optim="adamw_torch_fused", # LLama 2 
                 adam_beta1=adam_beta1, # LLama 2 Meditron 7B
@@ -218,6 +273,16 @@ def train_cpt(datasets: List[str],
                 lr_scheduler_type=lr_scheduler_type, # Meditron 7B
                 warmup_ratio=wrmp, # llama 2 (3%)
                 learning_rate=lr, # Meditron 7B
+                ## TO ALLOW TRAINING ON A100
+                bf16=True,
+                tf32=True,
+                torch_compile=True,
+                auto_find_batch_size=True,
+                debug="underflow_overflow",
+                dataloader_num_workers=32,
+                gradient_accumulation_steps=1, ## perhaps higher
+                gradient_checkpointing=True
+
         )
 
     trainer = Trainer(
@@ -259,6 +324,10 @@ def check_save_dir(save_dir, verbose):
     return save_dir
 
 
+def jupyter(**kwargs):
+    ## leave container open
+    time.sleep(1e8)
+
 def dispatch() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--datasets", help="Enter the names of the dataset to use uin : ['pubmed', 'pmc', 'mimic', 'all']", default="all", nargs="+")
@@ -268,7 +337,7 @@ def dispatch() -> None:
     parser.add_argument("--batch_size", help="Batch size", default=4, type=int)
     parser.add_argument("--verbose", help="Verbose", default=True, type=float)
     parser.add_argument("--n_train_epoch", help="Number of train epoch", default=1, type=int)
-    parser.add_argument("--type", help="Type of training in ['CPT', 'SFT', 'DPO']", default="CPT")
+    parser.add_argument("--type", help="Type of training in ['CPT', 'SFT', 'DPO', 'jupyter']", default="CPT")
 
     for arg in TRAIN_CONFIG:
         parser.add_argument(f"--{arg}", help=TRAIN_CONFIG[arg][1], default=TRAIN_CONFIG[arg][0])                    
@@ -285,10 +354,17 @@ def dispatch() -> None:
     print("-", "Will train from", args.base_checkpoint, "checkpoint") if args.verbose else None
 
     ## dispatch
+
     kwargs = vars(args)
     runtype = kwargs["type"]
     del kwargs["type"]
+    
+
     match runtype:
+        case "jupyter":
+            jupyter(**kwargs)
+        case "cmd":
+            jupyter(**kwargs)
         case "DPO":
             train_dpo(**kwargs)
         case "SFT":
@@ -302,4 +378,10 @@ def dispatch() -> None:
     
 
 if __name__ == "__main__":
+    print("#"*200)
+    print("Current user id : ", os.getuid())
+    print("Current user name : ", os.popen('whoami').read())
+    print("Current groups : ", os.popen('groups').read())
+    print("#"*200)
+
     dispatch()
