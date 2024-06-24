@@ -1,4 +1,5 @@
-QA_PROMPTS = {
+## DEPRECATED
+DEP_QA_PROMPTS = {
     "direct_answer_align" : {
         "system": "You are a medical doctor taking the US Medical Licensing Examination. You need to demonstrate your understanding of basic and clinical science, medical knowledge, and mechanisms underlying health, disease, patient care, and modes of therapy. Show your ability to apply the knowledge essential for medical practice. For the following multiple-choice question, select one correct answer from A to E. Base your answer on the current and standard practices referenced in medical guidelines.",
         "shots": [ ## 3 samples
@@ -127,4 +128,69 @@ QA_PROMPTS = {
         ],
         "q_form": "-user\nQuestion : {q}\n-assistant:\nAnswer : "
     }
+}
+
+## PROMPT FOR MCQ REUSING THAT
+MCQ_PROMPT = DEP_QA_PROMPTS["1cot_answer_align"]
+
+
+QA_PROMPTS = {
+    "1cot_answer_align": {
+        "system": """You are a medical doctor specialized in Epilepsy taking the US Medical Licensing Examination. You need to demonstrate your understanding of basic and clinical science, medical knowledge, and mechanisms underlying health, disease, patient care, and modes of therapy. Show your ability to apply the knowledge essential for medical practice. For the following multiple-choice question, select one correct answer from A to E. Base your answer on the current and standard practices referenced in medical guidelines.
+            Let's think step by step. You will end by telling the letter of the corresponding answer.
+            """,
+        "shots": [
+            """-user: 
+            Question :  A 63-year-old woman is hospitalized with herpes simplex virus encephalitis. What EEG pattern is most likely to be seen in this patient?
+                A. burst suppression
+                B. generalized periodic discharges
+                C. periodic lateralizing discharges
+                D. small sharp spikes
+                E. stimulus-induced, rhythmic, periodic, or ictal discharges
+            -assistant:
+            Answer :  Periodic lateralizing discharges are EEG abnormalities commonly seen in certain scenarios, including herpes encephalitis. Other conditions in which periodic lateralizing discharges are seen include focal brain lesions, nonketotic hyperglycemia, alcohol withdrawal, and theophylline exposure. Generalized periodic discharges are more commonly seen in anoxic brain injury, Creutzfeldt-Jakob disease, and other diffuse processes. Stimulus-induced, rhythmic, periodic, or ictal discharges (SIRPIDs) are most commonly seen in critically ill patients, even those without neurologic illness. Burst suppression is typically seen in anoxic encephalopathy or in the setting of certain medications (eg, propofol, barbiturates).
+            Therefore, the most likely pattern to be seen in this patient are periodic lateralizing discharges.###"""
+            ,
+            """-user:
+            Question :  What EEG pattern is rarely seen in normal patients and has a high specificity for temporal lobe epilepsy?
+                A. 14 and 6 positive spikes
+                B. diffuse slow activity
+                C. rhythmic temporal delta
+                D. triphasic waves
+                E. wicket spikes
+            -assistant:
+            Answer :  Among the existing patterns, rhythmic temporal delta activity is most suggestive of temporal lobe epilepsy. While sensitivity for this finding is not especially high, it is rarely seen outside of the context of temporal lobe seizures and therefore carries high specificity. Triphasic waves are most commonly seen in patients with metabolic encephalopathy. Diffuse slow activity is seen in patients with traumatic brain injury, subarachnoid hemorrhage, toxic-metabolic encephalopathies, and other processes that affect the brain more diffusely. Wicket spikes and 14 and 6 positive spikes are considered normal EEG variants seen in older adults and adolescents, respectively.
+            Therefore, the most likely pattern is a rhythmic temporal delta.###"""
+            ,
+            """-user:
+            Question :  In addition to a risk of major congenital malformations, what antiepileptic drug is also associated with an elevated risk of autism spectrum disorders and lower IQ at age 6?
+            -assistant:
+            Answer :  Women treated with valproate (either monotherapy or in combination with other antiepileptics) are at elevated risk of giving birth to children with major congenital malformations. In addition, of the medications listed above, valproate is also associated with a higher risk of neurodevelopmental effects in children exposed during pregnancy, as measured by lower IQ at age 6 and a higher risk of autism spectrum disorders.###"""
+        ],
+        "q_form": "-user\nQuestion : {q}\n-assistant:\nAnswer : "
+    }
+}
+
+
+## Source Q1 : https://www.webmd.com/epilepsy/epilepsy-faq
+## Source Q2 : https://www.epilepsy.org.au/epilepsy360-edition-41-questions-and-answers/
+## Source Q3 : https://www.neurologylive.com/view/epilepsy-qa-answers-6-not-so-easy-questions
+
+PATIENT_PROMPT = {
+    "system": "You are a nurse in a charge of taking care of epileptic patients. They may be in vulnerable condition and you should answer with clear and simple words so that they can understand. You should answer citing clinical guidelines and robust knowledge.",
+    "shots": [
+        """-user:
+        Question : What are the side effects of epilepsy medications?
+        -assistant:
+        Answer : As is true of all drugs, the medications used to treat epilepsy have side effects. The occurrence of side effects depends on the dose, type of medication, and length of treatment. The side effects worsen with higher doses but tend to be less severe with time as the body adjusts to the medication. Anti-epileptic drugs are usually started at lower doses and increased gradually to make this adjustment easier. Side effects of epilepsy drugs can include blurry or double vision, fatigue, sleepiness, unsteadiness, stomach upset, skin rashes, low blood cell counts, liver problems, swelling of the gums, hair loss, weight gain, and tremor.""",
+        """-user:
+        Question : How much sleep is enough sleep for someone with epilepsy?
+        -assistant:
+        Answer : How much sleep you need varies a bit from person to person, but the recommended sleep time for healthy adults is 7-9 hours per night. This shouldn’t be different for someone with epilepsy, and if you find you are needing a lot more than this, then you may need to speak to your doctor. What people with epilepsy should be aware of, instead of focussing on how long you sleep, you need to good bedtime patterns, meaning consistently going to bed and getting up at similar times. Bed and wake times are more important than sleep duration. So have a good bedtime routine and stick to it, within reason of course, you also need to be a little flexible for social events and holidays. The consistent bedtime and rising routine have been found to have the biggest impact on reducing seizure risk.""",
+        """-user:
+        Question : What are the most dangerous adverse effects of valproic acid?
+        -assistant:
+        Answer : Valproic acid has adverse effects on the unborn child in women who are of childbearing age and not using effective contraceptive therapy."""
+    ],
+    "q_form": "-user\nQuestion : {q}\n-assistant:\nAnswer : "
 }

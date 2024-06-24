@@ -5,7 +5,7 @@ import json
 from tqdm.notebook import tqdm
 from pathlib import Path
 import pickle
-from models.qa_prompts import QA_PROMPTS
+from models.qa_prompts import DEP_QA_PROMPTS
 from .offline_metrics import embSim, embed_dataset
 import numpy as np
 
@@ -112,7 +112,7 @@ class MCQBenchmark():
                 return
             if(self.support_type == "deterministic"):
                 ## THE SHOTS ARE IN THE CLASSICAL PROMPT
-                return QA_PROMPTS["1cot_answer_align"]["shots"]
+                return DEP_QA_PROMPTS["1cot_answer_align"]["shots"]
             if(self.support_type == "random"):
                 ## SELECT FOR EACH SAMPLE A SET OF N_SHOTS SHOTS IN THE SUPPORT SET
                 return [_["shot"] for _ in random.sample(SUPPORT_SET, self.n_shots)]
