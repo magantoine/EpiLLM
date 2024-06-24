@@ -1,5 +1,6 @@
 # python requirements
-FROM --platform=linux/amd64 python:3.10
+# FROM --platform=linux/amd64 python:3.10
+FROM --platform=linux/amd64 nvcr.io/nvidia/pytorch:23.07-py3
 
 # # Set default shell to /bin/bash
 SHELL ["/bin/bash", "-cu"]
@@ -21,7 +22,7 @@ ARG GROUP_ID=11131
 RUN useradd -m -u $USER_ID $USER_NAME
 RUN groupadd -g ${GROUP_ID} ${GROUP_NAME}
 RUN usermod -g ${GROUP_NAME} ${USER_NAME}
-USER ${USER_NAME}
+# USER ${USER_NAME}
 
 
 # # Define container entry point (could also work with CMD python main.py)
@@ -36,8 +37,10 @@ RUN echo "DEVICE=\"cuda\"" >> /home/magron/.env
 RUN echo "OS_TYPE=\"Darwin\"" >> /home/magron/.env
 RUN cat /home/magron/.env
 
+USER ${USER_NAME}
+
 # RUN pip install -r /home/magron/requirements.txt --no-cache-dir
-RUN pip install huggingface_hub --no-cache-dir
+# RUN pip install huggingface_hub --no-cache-dir
 # RUN pip install pathlib --no-cache-dir
 # RUN pip install accelerate -U
 
