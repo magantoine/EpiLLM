@@ -6,7 +6,8 @@ docs/generations_llm/
 docs/graphs
 docs/paper
 docs/results
-# docs/mimic-iv-note-deidentified-free-text-clinical-notes-2.2/note
+docs/mimic-iv-note-deidentified-free-text-clinical-notes-2.2/note/*_full.csv
+docs/mimic-iv-note-deidentified-free-text-clinical-notes-2.2/note/*_test.csv
 
 ## git
 .git
