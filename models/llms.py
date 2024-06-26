@@ -4,6 +4,7 @@ from transformers import (AutoModel,
                           AutoTokenizer,
                           AutoModelForCausalLM,
                           LlamaForCausalLM)
+from huggingface_hub import snapshot_download
 from dotenv import load_dotenv, find_dotenv
 load_dotenv(find_dotenv())
 import os
@@ -141,7 +142,8 @@ class HF_LLM(Model):
                  model_name: str="epfl-llm/meditron-7b",
                  arg: GenerationArg=GenerationArg(),
                  device:str="",
-                 use_vllm:bool=False) -> None:
+                 use_vllm:bool=False,
+                 lora_path:str|None=None) -> None:
         super().__init__()
 
         self.model_name = model_name
@@ -149,6 +151,10 @@ class HF_LLM(Model):
         self.loaded = False
         self.device = device
         self.use_vllm = use_vllm
+        self.use_lora = (lora_path is not None)
+        
+        lora_repo = snapshot_download(repo_id=lora_path) if self.use_lora else None
+        self.lora_path = vllm.lora.request.LoRARequest("q&a_adapter", 1, lora_repo)
 
     def load(self) -> None:
         if(self.loaded):
@@ -161,8 +167,10 @@ class HF_LLM(Model):
                 self.client = vllm.LLM(
                     model=self.model_name,
                     tokenizer=self.model_name,
-                    tensor_parallel_size=torch.cuda.device_count()
+                    tensor_parallel_size=torch.cuda.device_count(),
+                    enable_lora=self.use_lora
                 )
+
             self.loaded = True
         
     def query(self, prompts:Union[List[str], str]) -> str:
@@ -176,10 +184,17 @@ class HF_LLM(Model):
                     **self.arg.attr) 
             return self.tok.batch_decode(gens)
         else :
-            return self.client.generate(
-                prompts,
-                sampling_params=self.arg.sampling_params
-            )
+            if(self.use_lora):
+                return self.client.generate(
+                    prompts,
+                    sampling_params=self.arg.sampling_params,
+                    lora_request=self.lora_path
+                )
+            else:
+                return self.client.generate(
+                    prompts,
+                    sampling_params=self.arg.sampling_params
+                )
 
     def set_arg(self,
                 narg:GenerationArg) -> None:
