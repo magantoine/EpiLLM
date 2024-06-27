@@ -3,7 +3,7 @@ from pathlib import Path
 import os
 import torch
 from typing import (List, Tuple, Dict)
-from datasets import (Dataset, concatenate_datasets)
+from datasets import (Dataset, concatenate_datasets, load_dataset)
 from models import (get_pmc_patients, get_pubmed_ds, get_mimic_iv_notes)
 from torch.nn.functional import one_hot
 from torch.nn import CrossEntropyLoss
@@ -11,7 +11,14 @@ from transformers import (AutoModelForCausalLM,
                           AutoTokenizer,
                           Trainer,
                           TrainingArguments,
-                          DataCollatorWithPadding)
+                          DataCollatorWithPadding,
+                          LlamaForCausalLM)
+from peft import (
+        get_peft_model, 
+        prepare_model_for_kbit_training, 
+        LoraConfig
+    )
+from trl import SFTTrainer
 import time
 from pynvml import *
 
@@ -23,11 +30,11 @@ torch.backends.cudnn.allow_tf32 = True
 
 
 ## CONNECTING TO HUGGINGFACE API
-import huggingface_hub
-with open("/tmp/envfile", 'r') as f:
-    HF_TOKEN = f.read().split("=")[1][1:-1]
-print(HF_TOKEN)
-huggingface_hub.login(HF_TOKEN)
+# import huggingface_hub
+# with open("/tmp/envfile", 'r') as f:
+#     HF_TOKEN = f.read().split("=")[1][1:-1]
+# print(HF_TOKEN)
+# huggingface_hub.login(HF_TOKEN)
 
 ### loading device
 if("DEVICE" in os.environ):
@@ -39,12 +46,21 @@ else :
 
 ### functions to load datasets
 SEED = 42
-LLAMA2_MODEL_MAX_LENGTH = 4096
+LLAMA2_MODEL_MAX_LENGTH = 2048
+
+
+def get_pubmed():
+    epi_pubmed = load_dataset("cryptoni/epi_pubmed")
+    train, test = epi_pubmed["train"], epi_pubmed["test"]
+    train = train.rename_column("abstract", "text")
+    test = test.rename_column("abstract", "text")
+    return train.select_columns("text"), test.select_columns("text")
+
 KNOWN_DATASETS = ["pubmed", "pmc", "mimic"]
 DATAFUNCS = {
     "mimic": lambda : get_mimic_iv_notes("disc"),
     "pmc": get_pmc_patients,
-    "pubmed": lambda : get_pubmed_ds(split="[:]", flag_filter=True)
+    "pubmed": get_pubmed
 }
 
 ### training arguments
@@ -55,8 +71,26 @@ TRAIN_CONFIG = {
     "max_grad_norm": [1.0, "Maximum norm for grad"],
     "lr_scheduler_type": ["cosine", "Type of scheduler for learning rate"],
     "wrmp": [0.3, "warmup ration"],
-    "lr": [3e-4, "Learning rate"],
+    "lr": [5e-6, "Learning rate"],
     "weight_decay": [0.1, "weight_decay"],
+}
+
+
+SFT_CONFIG = {
+    "lora": [True, "Using LoRA ?"],
+    "lora_r": [8, "LoRA r"],
+    "lora_alpha": [16, "LoRA Alpha"],
+    "lora_dropout": [0.1, "LoRA Dropout"],
+    "lora_target_modules": [["q_proj", "v_proj"], "LoRA Target Modules"],
+    "sft_learning_rate": [2e-5, "Learning for SFT"],
+    "sft_optim": ["adamw_torch", "optimizer for SFT"],
+    "sft_lr_scheduler_type": ["cosine", "Scheduler for lr for SFT"],
+    "sft_wrmp": [0.05, "warmup for sft"],
+    "sft_adam_beta1": [0.9, "Adam Beta 1"],
+    "sft_adam_beta2": [0.95, "Adam Beta 2"],
+    "sft_adam_epsilon": [10e-5, "Adam Epsilon"],
+    "sft_max_grad_norm": [1.0, "Maximum norm for grad"],
+    "sft_packing": [True, "SFT Packing"],
 }
 
 
@@ -70,56 +104,6 @@ def print_gpu_utilization():
     print(f"GPU memory occupied: {info.used//1024**3} GB.")
 
 
-def tokenize_sample(sample: Dict[str, str],
-                    tok: AutoTokenizer) -> Dict[str, torch.Tensor]:
-    """
-        Tokenize a sample with the tokenizer
-
-        args :
-            - sample (Dict[str, str]) : {'text' : 'The samples sentence'}
-            - tok (AutoTokenize) : the used tokenizer
-        
-        returns :
-            - {'input_ids': torch.tensor([...]), 'attention_mask': torch.tensor([...])}
-    """
-    ## context length : 2048 for meditron-7b, 512 for gpt2
-    tokenized = tok(
-        sample["text"],
-        return_tensors="pt",
-        max_length=min(tok.model_max_length, LLAMA2_MODEL_MAX_LENGTH),
-        truncation=True,
-        padding="max_length"
-    )
-    tokenized["input_ids"] = tokenized["input_ids"].squeeze(0) ## sample by sample : squeeze
-    tokenized["attention_mask"] = tokenized["attention_mask"].squeeze(0) ## sample by sample : squeeze
-    return tokenized
-
-
-# def prepare_datasets(datasets: List[str],
-#                      tok: AutoTokenizer,
-#                      test_ratio: float=.2,
-#                      tokenize: bool=True) -> Tuple[Dataset, Dataset]:
-#     """
-#         Prepare the raw dataset, with tokenization and deterministic split
-#         in train and eval.
-
-#         args :
-#             - datasets (List[str]) : list of names of datasets to use
-#             - tok (AutoTokenizer) : tokenizer
-#             - test_ratio (float) : % to select to be eval dataset (deterministic)
-#             - tokenize (bool) : should it be tokenize, yes? no?
-        
-#         returns :
-#             train and test dataset
-#     """
-#     datasets = [
-#         DATAFUNCS[dataset]()\
-#         .map(lambda s : tokenize_sample(s, tok) if tokenize else s)\
-#         .select_columns(["input_ids", "attention_mask"]) for dataset in datasets
-#     ] ## load and tokenize each dataset    
-#     splitted = [dataset.train_test_split(test_ratio, seed=SEED) for dataset in datasets] ## split each of them
-#     train_datasets, test_datasets = zip(*[(d["train"], d["test"]) for d in splitted])
-#     return concatenate_datasets(train_datasets), concatenate_datasets(test_datasets)
 
 def prepare_datasets(datasets: List[str],
                      tok: AutoTokenizer,
@@ -138,11 +122,6 @@ def prepare_datasets(datasets: List[str],
         returns :
             train and test dataset
     """
-    #datasets = [
-    #    DATAFUNCS[dataset]()\
-    #    .map(lambda s : tokenize_sample(s, tok) if tokenize else s)\
-    #    .select_columns(["input_ids", "attention_mask"]) for dataset in datasets
-    #] ## load and tokenize each dataset    
     datasets = [
             DATAFUNCS[dataset]()\
             .map(lambda x : tok(x["text"], return_tensors="pt", max_length=min(tok.model_max_length, LLAMA2_MODEL_MAX_LENGTH), truncation=True, padding="max_length") if tokenize else x, batched=True)\
@@ -152,6 +131,31 @@ def prepare_datasets(datasets: List[str],
     train_datasets, test_datasets = zip(*[(d["train"], d["test"]) for d in splitted])
     return concatenate_datasets(train_datasets), concatenate_datasets(test_datasets)
 
+
+
+
+def load_sft_data(tok):
+    """
+        Prepare the raw dataset for, with tokenization and deterministic split
+        in train and eval.
+
+        args :    
+            - tok (AutoTokenizer) : tokenizer
+        
+        returns :
+            train and test dataset
+    """
+    dataset = load_dataset("cryptoni/epilepsy_guidelines_QA")
+
+    splits = ["train", "test"]
+    cols = ["questions", "answers"]
+    for split in splits: 
+        dataset[split] = dataset[split].map(lambda x : tok(x["questions"], return_tensors="pt", max_length=min(tok.model_max_length, LLAMA2_MODEL_MAX_LENGTH), truncation=True, padding="max_length"), batched=True)
+        dataset[split] = dataset[split].map(lambda x : {
+            "labels" : tok(x["answers"], return_tensors="pt", max_length=min(tok.model_max_length, LLAMA2_MODEL_MAX_LENGTH), truncation=True, padding="max_length").input_ids
+            }, batched=True).select_columns(["input_ids", "attention_mask", "labels"])
+    
+    return dataset["train"], dataset["test"]
 
 ################################### TRAINING ############################################################################
 
@@ -178,12 +182,6 @@ def compute_loss(model: AutoModelForCausalLM,
                     ) ## Loss computation, comparing the logits and the one hot distrib
     return loss
 
-def train_sft(**kwargs) -> None:
-    """
-        Supervised Fine Tuning (SFT) : used for simple alignement for tasks that
-        are fairly easy to determine (MCQ, etc...)
-    """
-    raise NotImplementedError("SFT not yet implem")
 
 def train_dpo(**kwargs) -> None:
     """
@@ -191,6 +189,119 @@ def train_dpo(**kwargs) -> None:
         are easy to judge but hard to formalize (assistant, chat, surgery referral...)
     """
     raise NotImplementedError("DPO not yet implem")
+
+
+def train_sft(base_checkpoint: str,
+               lora: bool,
+               save_dir: str,
+               checkpoint: str,
+               sft_adam_beta1: float ,
+               sft_adam_beta2: float ,
+               sft_adam_epsilon: float,
+               sft_max_grad_norm: float,
+               sft_lr_scheduler_type: float,
+               sft_optim: str,
+               sft_wrmp: float,
+               lora_alpha: float,
+               lora_target_modules: List[str],
+               lora_dropout: float,
+               lora_r:int,
+               n_train_epoch: int=1,
+               sft_lr: float=5e-6,
+               verbose: bool=True,
+               sft_packing: bool=True,
+               **kwargs) -> None:
+    """
+        Supervised Fine-Tunin with Low-Rank Adaptation (SFT-LoRA) : used for alignement tasks that
+        are easy to judge but hard to formalize (assistant, chat, surgery referral...)
+    """
+
+    print("-", "Loading model and tokenize") if verbose else None
+    tok = AutoTokenizer.from_pretrained(base_checkpoint)
+    llm = LlamaForCausalLM.from_pretrained(
+        base_checkpoint,
+        torch_dtype=torch.bfloat16, # recommended on https://huggingface.co/docs/transformers/en/model_doc/llama2#usage-tips
+        load_in_8bit=False,
+        # low_cpu_mem_usage=True,
+        device_map="auto",
+        use_cache=False, # set to true for inference
+        attn_implementation="flash_attention_2"
+    )
+    tok.pad_token = tok.eos_token
+    tok.padding_side = "right"
+    data_train, data_test = load_sft_data(tok)
+    print(data_train)
+    print_gpu_utilization()
+
+    if lora:
+        lora_config = LoraConfig(
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            target_modules=lora_target_modules,
+            lora_dropout=lora_dropout,
+            bias="none",
+            task_type="CAUSAL_LM",
+            # modules_to_save = ["lm_head", "embed_tokens"]   # because we added new tokens
+        )
+        llm.enable_input_require_grads()
+        llm = get_peft_model(llm, lora_config)
+        llm.print_trainable_parameters()
+        llm = prepare_model_for_kbit_training(llm)
+        llm = get_peft_model(llm, lora_config)
+    
+    
+    training_args = TrainingArguments(
+                output_dir=Path(save_dir) / checkpoint,
+                num_train_epochs=n_train_epoch, ## only 1 epoch
+                evaluation_strategy="no",
+                save_strategy="no",
+                remove_unused_columns=False,
+                save_steps=5_000,
+                optim=sft_optim, # LLama 2 
+                adam_beta1=sft_adam_beta1, # LLama 2 Meditron 7B
+                adam_beta2=sft_adam_beta2, # LLama 2 Meditron 7B
+                adam_epsilon=sft_adam_epsilon, # LLama 2 
+                max_grad_norm=sft_max_grad_norm, # Meditron 7B
+                lr_scheduler_type=sft_lr_scheduler_type, # Meditron 7B
+                warmup_ratio=sft_wrmp, # llama 2 (3%)
+                learning_rate=sft_lr, # Meditron 7B
+                ## TO ALLOW TRAINING ON A100
+                bf16=True,
+                tf32=True,
+                torch_compile=True,
+                auto_find_batch_size=True,
+                debug="underflow_overflow",
+                dataloader_num_workers=16,
+                gradient_accumulation_steps=32, ## perhaps higher
+                gradient_checkpointing=True
+
+        )
+
+    
+    trainer = SFTTrainer(
+        llm,
+        args=training_args,
+        train_dataset=data_train,
+        eval_dataset=data_test,
+        dataset_num_proc=64,
+        max_seq_length=LLAMA2_MODEL_MAX_LENGTH,
+        # dataset_text_field='input_ids',
+        # formatting_func=formatting_func,
+        packing=sft_packing,
+        eval_packing=sft_packing,
+        tokenizer=tok
+    )
+
+    ## training launch
+    print("LAUNCH TRAINING")
+    trainer.train()
+
+    if lora:
+        llm = llm.merge_and_unload()
+    
+    ## save final model into the inputed save_dir/checkpoint
+    trainer.save_model()
+
 
 def train_cpt(datasets: List[str],
           save_dir: str,
@@ -242,7 +353,7 @@ def train_cpt(datasets: List[str],
         load_in_8bit=False,
         # low_cpu_mem_usage=True,
         device_map="auto",
-        use_cache=False # set to true for inference
+        use_cache=False # set to true for inference
         # attn_implementation="flash_attention_2"
     )
     print_gpu_utilization()
@@ -260,7 +371,7 @@ def train_cpt(datasets: List[str],
                 # per_device_train_batch_size=batch_size, # AUTO
                 # per_device_eval_batch_size=batch_size,  # AUTO
                 num_train_epochs=n_train_epoch, ## only 1 epoch
-                evaluation_strategy="epoch",
+                evaluation_strategy="no",
                 save_strategy="epoch",
                 remove_unused_columns=False,
                 save_steps=5_000,
@@ -279,8 +390,8 @@ def train_cpt(datasets: List[str],
                 torch_compile=True,
                 auto_find_batch_size=True,
                 debug="underflow_overflow",
-                dataloader_num_workers=32,
-                gradient_accumulation_steps=1, ## perhaps higher
+                dataloader_num_workers=16,
+                gradient_accumulation_steps=32, ## perhaps higher
                 gradient_checkpointing=True
 
         )
@@ -295,7 +406,7 @@ def train_cpt(datasets: List[str],
     )
 
     ## loss for next token prediction
-    trainer.compute_loss = lambda model, inputs : compute_loss(model, inputs, tok)
+    # trainer.compute_loss = lambda model, inputs : compute_loss(model, inputs, tok)
     
     ## training launch
     print("LAUNCH TRAINING")
@@ -341,6 +452,9 @@ def dispatch() -> None:
 
     for arg in TRAIN_CONFIG:
         parser.add_argument(f"--{arg}", help=TRAIN_CONFIG[arg][1], default=TRAIN_CONFIG[arg][0])                    
+    
+    for arg in SFT_CONFIG:
+        parser.add_argument(f"--{arg}", help=SFT_CONFIG[arg][1], default=SFT_CONFIG[arg][0])                    
     
     args = parser.parse_args()
 
