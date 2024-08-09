@@ -1,0 +1,3 @@
+./prepare_container.sh && pip install wandb && python training.local.py --datasets pmc pubmed --save_dir scratch/home/magron --checkpoint epitron_PMC_FullerPubmed_5e6_5pcrtwrmp --base_checkpoint meta-llama/Meta-Llama-3-8B
+# ./prepare_container.sh && pip install wandb && python training.py --type SFT --save_dir scratch/home/magron --checkpoint epitron_sft_nolora --base_checkpoint cryptoni/epitron_PMC_FullPubmed_1e6_5pcrtwrmp --n_train_epoch 10
+# ./prepare_container.sh && pip install wandb && python training.local.py --datasets pmc pubmed --save_dir scratch/home/magron --checkpoint epitron_PMC_FullPubmed_2e6_1pcrtwrmp --lr 2e-6 --base_checkpoint meta-llama/Meta-Llama-3-8B
