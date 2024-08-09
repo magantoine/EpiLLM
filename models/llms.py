@@ -152,9 +152,11 @@ class HF_LLM(Model):
         self.device = device
         self.use_vllm = use_vllm
         self.use_lora = (lora_path is not None)
-        
-        lora_repo = snapshot_download(repo_id=lora_path) if self.use_lora else None
-        self.lora_path = vllm.lora.request.LoRARequest("q&a_adapter", 1, lora_repo)
+        if(self.use_vllm):
+            lora_repo = snapshot_download(repo_id=lora_path) if self.use_lora else None
+            self.lora_path = vllm.lora.request.LoRARequest("q&a_adapter", 1, lora_repo)
+        else:
+            self.lora_path = lora_path
 
     def load(self) -> None:
         if(self.loaded):
