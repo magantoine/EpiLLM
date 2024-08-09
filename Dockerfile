@@ -29,13 +29,42 @@ RUN usermod -g ${GROUP_NAME} ${USER_NAME}
 
 
 ### PUTS EVERYTHING TO home/magron dir
-COPY . ./home/magron/
-RUN touch home/magron/.env
+
+### CONDA :
+ENV PATH="/root/miniconda3/bin:${PATH}"
+ARG PATH="/root/miniconda3/bin:${PATH}"
+
+# Install wget to fetch Miniconda
+RUN apt-get update && \
+    apt-get install -y wget && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Miniconda on x86 or ARM platforms
+# RUN arch=$(uname -m) && \
+#     if [ "$arch" = "x86_64" ]; then \
+#     MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"; \
+#     elif [ "$arch" = "aarch64" ]; then \
+#     MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh"; \
+#     else \
+#     echo "Unsupported architecture: $arch"; \
+#     exit 1; \
+#     fi && \
+#     wget $MINICONDA_URL -O miniconda.sh && \
+#     mkdir -p /root/.conda && \
+#     bash miniconda.sh -b -p /root/miniconda3 && \
+#     rm -f miniconda.sh
+
+# RUN conda --version
+
+
+COPY . /home/magron/
+
+RUN touch /home/magron/.env
 RUN echo "DIR_PATH=\"home/magron/\"" > /home/magron/.env
 RUN echo "API_KEY=\"1\"" >> /home/magron/.env
 RUN echo "DEVICE=\"cuda\"" >> /home/magron/.env
 RUN echo "OS_TYPE=\"Darwin\"" >> /home/magron/.env
-RUN cat /home/magron/.env
 
 USER ${USER_NAME}
 
@@ -47,13 +76,17 @@ USER ${USER_NAME}
 
 
 
+
+
 ## set home dir to working directory
 WORKDIR /home/magron/
 
+# RUN echo "./prepare_container.sh && pip install wandb && python training.local.py --datasets pmc pubmed --save_dir scratch/home/magron --checkpoint epitron_PMC_FullPubmed --base_checkpoint meta-llama/Meta-Llama-3-8B" > run.sh
+# RUN echo "ls -l; pwd; ls -l /" >> run.sh
 
 
+# ENTRYPOINT ["bash", "run.sh"]
 ENTRYPOINT ["python", "container_link.py"]
-# ENTRYPOINT ["python", "testrcp.py"]
 
 ## args : 
 #   - save_dir : directory to save the checkpoints, scratch_dir in HaaS001 is at scratch/home/magron, we add the checkpoints to have them all in one point
