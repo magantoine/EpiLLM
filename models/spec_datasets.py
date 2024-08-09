@@ -37,8 +37,8 @@ def get_usable_PMC_patients():
     )
 
 @expose
-def get_pmc_patients():
-    return datasets.load_from_disk("docs/pmc_patiens_fil.hf")\
+def get_pmc_patients(split="train"):
+    return datasets.load_from_disk(f"docs/pmc_patiens_fil_{split}.hf")\
         .rename_column("patient", "text")\
         .select_columns(["text"])
         
@@ -77,7 +77,7 @@ def get_iterator(lb, ub):
     match (lb, ub):
             case (0, 'all'):
                 print("> fulliter <")
-                iter = enumerate(datasets.load_dataset("pubmed", streaming=True)["train"])
+                iter = enumerate(datasets.load_dataset("pubmed", streaming=True, num_proc=20)["train"])
             case (0, _):
                 print(f"> iter up to {ub}<")
                 iter = zip(range(ub), datasets.load_dataset("pubmed", streaming=True)["train"])
