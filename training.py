@@ -18,7 +18,7 @@ from peft import (
         prepare_model_for_kbit_training, 
         LoraConfig
     )
-from trl import SFTTrainer
+from trl import SFTTrainer, DPOTrainer
 import time
 from pynvml import *
 
@@ -28,13 +28,23 @@ load_dotenv()
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
 
-## CONNECTING TO HUGGINGFACE API
-# import huggingface_hub
+
+## CONNECTING TO HUGGINGFACE API // ONLY ON RCP
+import huggingface_hub
 # with open("/tmp/envfile", 'r') as f:
 #     HF_TOKEN = f.read().split("=")[1][1:-1]
 # print(HF_TOKEN)
-# huggingface_hub.login(HF_TOKEN)
+HF_TOKEN =  "HF_READ_KEY"
+huggingface_hub.login(HF_TOKEN)
+
+import wandb
+wandb.login(key="WANDB_KEY")
+os.environ["WANDB_PROJECT"] = "SFT_EPITRON"  # name your W&B project
+os.environ["WANDB_LOG_MODEL"] = "checkpoint" 
+
 
 ### loading device
 if("DEVICE" in os.environ):
@@ -76,21 +86,37 @@ TRAIN_CONFIG = {
 }
 
 
-SFT_CONFIG = {
-    "lora": [True, "Using LoRA ?"],
+
+LORA_CONFIG = {
+    "lora": [False, "Using LoRA ?"],
     "lora_r": [8, "LoRA r"],
     "lora_alpha": [16, "LoRA Alpha"],
     "lora_dropout": [0.1, "LoRA Dropout"],
-    "lora_target_modules": [["q_proj", "v_proj"], "LoRA Target Modules"],
-    "sft_learning_rate": [2e-5, "Learning for SFT"],
+    "lora_target_modules": [["gate_proj", "down_proj", "up_proj", "q_proj", "v_proj", "k_proj", "o_proj"], "LoRA Target Modules"] # ref : https://www.reddit.com/r/LocalLLaMA/comments/15sgg4m/what_modules_should_i_target_when_training_using/
+}
+
+SFT_CONFIG = {
+    "sft_lr": [3e-4, "Learning for SFT"],
     "sft_optim": ["adamw_torch", "optimizer for SFT"],
     "sft_lr_scheduler_type": ["cosine", "Scheduler for lr for SFT"],
-    "sft_wrmp": [0.05, "warmup for sft"],
+    "sft_wrmp": [0.1, "warmup for sft"],
     "sft_adam_beta1": [0.9, "Adam Beta 1"],
-    "sft_adam_beta2": [0.95, "Adam Beta 2"],
-    "sft_adam_epsilon": [10e-5, "Adam Epsilon"],
+    "sft_adam_beta2": [0.90, "Adam Beta 2"],
+    "sft_adam_epsilon": [1e-8, "Adam Epsilon"],
     "sft_max_grad_norm": [1.0, "Maximum norm for grad"],
-    "sft_packing": [True, "SFT Packing"],
+    "sft_packing": [True, "SFT Packing"]
+}
+
+DPO_CONFIG = {
+    "dpo_lr": [3e-4, "Learning for DPO"],
+    "dpo_optim": ["adamw_torch", "optimizer for DPO"],
+    "dpo_lr_scheduler_type": ["cosine", "Scheduler for lr for DPO"],
+    "dpo_wrmp": [0.05, "warmup for DPO"],
+    "dpo_adam_beta1": [0.9, "Adam Beta 1"],
+    "dpo_adam_beta2": [0.95, "Adam Beta 2"],
+    "dpo_adam_epsilon": [10e-5, "Adam Epsilon"],
+    "dpo_max_grad_norm": [1.0, "Maximum norm for grad"],
+    "dpo_packing": [True, "DPO Packing"]
 }
 
 
@@ -132,7 +158,11 @@ def prepare_datasets(datasets: List[str],
     return concatenate_datasets(train_datasets), concatenate_datasets(test_datasets)
 
 
-
+SYSTEM_PROMPT_QA = lambda is_mcq : f"You are a medical doctor taking the US Medical Licensing Examination. You need to demonstrate your understanding of basic and clinical science, medical knowledge, and mechanisms underlying health, disease, patient care, and modes of therapy. Show your ability to apply the knowledge essential for medical practice. {'For the following multiple-choice question, select one correct answer from A to E. Justify your answer and state the final answer letter.' if is_mcq else 'Answer the following question in the most clear and factual way and explain it.' } Base your answer on the current and standard practices referenced in medical guidelines."
+def prompt_template(q: str, stop_token:str="<|stop|>") -> str:
+    is_mcq = "Question:" in q
+    sys_prompt = SYSTEM_PROMPT_QA(is_mcq)
+    return f"""-system:\n{sys_prompt}\n-user:{q.replace("Question:", "").strip()}\n-assistant:\n""".replace("###", stop_token)
 
 def load_sft_data(tok):
     """
@@ -145,14 +175,45 @@ def load_sft_data(tok):
         returns :
             train and test dataset
     """
-    dataset = load_dataset("cryptoni/epilepsy_guidelines_QA")
+    dataset = load_dataset("cryptoni/epilepsy_guidelines_QA_v2")
+    dataset = dataset.map(lambda x : {
+        "question": prompt_template(x["question"]),
+        "answer": x["question"] + "<|stop|>"
+    })
 
     splits = ["train", "test"]
     cols = ["questions", "answers"]
     for split in splits: 
-        dataset[split] = dataset[split].map(lambda x : tok(x["questions"], return_tensors="pt", max_length=min(tok.model_max_length, LLAMA2_MODEL_MAX_LENGTH), truncation=True, padding="max_length"), batched=True)
+        dataset[split] = dataset[split].map(lambda x : tok(x["question"], return_tensors="pt", max_length=min(tok.model_max_length, LLAMA2_MODEL_MAX_LENGTH), truncation=True, padding="max_length"), batched=True)
         dataset[split] = dataset[split].map(lambda x : {
-            "labels" : tok(x["answers"], return_tensors="pt", max_length=min(tok.model_max_length, LLAMA2_MODEL_MAX_LENGTH), truncation=True, padding="max_length").input_ids
+            "labels" : tok(x["answer"], return_tensors="pt", max_length=min(tok.model_max_length, LLAMA2_MODEL_MAX_LENGTH), truncation=True, padding="max_length").input_ids
+            }, batched=True).select_columns(["input_ids", "attention_mask", "labels"])
+    
+    return dataset["train"], dataset["test"]
+
+
+def load_dpo_data(tok):
+    """
+        Prepare the raw dataset for, with tokenization and deterministic split
+        in train and eval.
+
+        args :    
+            - tok (AutoTokenizer) : tokenizer
+        
+        returns :
+            train and test dataset
+    """
+    dataset = load_dataset("cryptoni/epilepsy_guidelines_QA_v2")
+    dataset = dataset.map(lambda x : {
+        "question": prompt_template(x["question"]),
+        "answer": x["question"] + "<|stop|>"
+    })
+    splits = ["train", "test"]
+    cols = ["questions", "answers"]
+    for split in splits: 
+        dataset[split] = dataset[split].map(lambda x : tok(x["question"], return_tensors="pt", max_length=min(tok.model_max_length, LLAMA2_MODEL_MAX_LENGTH), truncation=True, padding="max_length"), batched=True)
+        dataset[split] = dataset[split].map(lambda x : {
+            "labels" : tok(x["answer"], return_tensors="pt", max_length=min(tok.model_max_length, LLAMA2_MODEL_MAX_LENGTH), truncation=True, padding="max_length").input_ids
             }, batched=True).select_columns(["input_ids", "attention_mask", "labels"])
     
     return dataset["train"], dataset["test"]
@@ -183,12 +244,115 @@ def compute_loss(model: AutoModelForCausalLM,
     return loss
 
 
-def train_dpo(**kwargs) -> None:
+def train_dpo(base_checkpoint: str,
+               lora: bool,
+               save_dir: str,
+               checkpoint: str,
+               dpo_beta: float,
+               dpo_adam_beta2: float ,
+               dpo_adam_beta1: float ,
+               dpo_adam_epsilon: float,
+               dpo_max_grad_norm: float,
+               dpo_lr_scheduler_type: float,
+               dpo_optim: str,
+               dpo_wrmp: float,
+               lora_alpha: float,
+               lora_target_modules: List[str],
+               lora_dropout: float,
+               lora_r:int,
+               n_train_epoch: int=1,
+               dpo_lr: float=5e-6,
+               verbose: bool=True,
+               dpo_packing: bool=True,
+               **kwargs) -> None:
     """
         Direct Preference Optimization (DPO) : used for alignement tasks that
         are easy to judge but hard to formalize (assistant, chat, surgery referral...)
     """
-    raise NotImplementedError("DPO not yet implem")
+
+    print("-", "Loading model and tokenize") if verbose else None
+    tok = AutoTokenizer.from_pretrained(base_checkpoint)
+    llm = LlamaForCausalLM.from_pretrained(
+        base_checkpoint,
+        torch_dtype=torch.bfloat16, # recommended on https://huggingface.co/docs/transformers/en/model_doc/llama2#usage-tips
+        load_in_8bit=False,
+        # low_cpu_mem_usage=True,
+        device_map="auto",
+        use_cache=False # set to true for inference
+    )
+    tok.pad_token = tok.eos_token
+    tok.padding_side = "right"
+    data_train, data_test = load_dpo_data(tok)
+    print(data_train)
+    print("SELECTED LEARNING RATE : ", dpo_lr)
+    print_gpu_utilization()
+
+    if lora:
+        lora_config = LoraConfig(
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            target_modules=lora_target_modules,
+            lora_dropout=lora_dropout,
+            bias="none",
+            task_type="CAUSAL_LM",
+            # modules_to_save = ["lm_head", "embed_tokens"]   # because we added new tokens
+        )
+        llm.enable_input_require_grads()
+        llm = get_peft_model(llm, lora_config)
+        llm.print_trainable_parameters()
+        llm = prepare_model_for_kbit_training(llm)
+        llm = get_peft_model(llm, lora_config)
+    
+    
+    training_args = TrainingArguments(
+                output_dir=Path(save_dir) / checkpoint,
+                num_train_epochs=n_train_epoch, ## only 1 epoch
+                evaluation_strategy="epoch",
+                save_strategy="epoch",
+                remove_unused_columns=False,
+                optim=dpo_optim, # LLama 2 
+                adam_beta1=dpo_adam_beta1, # LLama 2 Meditron 7B
+                adam_beta2=dpo_adam_beta2, # LLama 2 Meditron 7B
+                adam_epsilon=dpo_adam_epsilon, # LLama 2 
+                max_grad_norm=dpo_max_grad_norm, # Meditron 7B
+                lr_scheduler_type=dpo_lr_scheduler_type, # Meditron 7B
+                warmup_ratio=dpo_wrmp, # llama 2 (3%)
+                learning_rate=dpo_lr, # Meditron 7B
+                ## TO ALLOW TRAINING ON A100
+                bf16=True,
+                tf32=True,
+                torch_compile=True,
+                auto_find_batch_size=True,
+                debug="underflow_overflow",
+                dataloader_num_workers=16,
+                gradient_accumulation_steps=32, ## perhaps higher
+                gradient_checkpointing=True
+
+        )
+
+    
+    trainer = DPOTrainer(
+        llm,
+        args=training_args,
+        beta=dpo_beta,
+        train_dataset=data_train,
+        eval_dataset=data_test,
+        dataset_num_proc=64,
+        max_seq_length=LLAMA2_MODEL_MAX_LENGTH,
+        packing=dpo_packing,
+        eval_packing=dpo_packing,
+        tokenizer=tok
+    )
+
+    ## training launch
+    print("LAUNCH TRAINING")
+    trainer.train()
+
+    if lora:
+        llm = llm.merge_and_unload()
+    
+    ## save final model into the inputed save_dir/checkpoint
+    trainer.save_model()
 
 
 def train_sft(base_checkpoint: str,
@@ -224,13 +388,13 @@ def train_sft(base_checkpoint: str,
         load_in_8bit=False,
         # low_cpu_mem_usage=True,
         device_map="auto",
-        use_cache=False, # set to true for inference
-        attn_implementation="flash_attention_2"
+        use_cache=False # set to true for inference
     )
     tok.pad_token = tok.eos_token
     tok.padding_side = "right"
     data_train, data_test = load_sft_data(tok)
     print(data_train)
+    print("SELECTED LEARNING RATE : ", sft_lr)
     print_gpu_utilization()
 
     if lora:
@@ -253,10 +417,9 @@ def train_sft(base_checkpoint: str,
     training_args = TrainingArguments(
                 output_dir=Path(save_dir) / checkpoint,
                 num_train_epochs=n_train_epoch, ## only 1 epoch
-                evaluation_strategy="no",
-                save_strategy="no",
+                evaluation_strategy="epoch",
+                save_strategy="epoch",
                 remove_unused_columns=False,
-                save_steps=5_000,
                 optim=sft_optim, # LLama 2 
                 adam_beta1=sft_adam_beta1, # LLama 2 Meditron 7B
                 adam_beta2=sft_adam_beta2, # LLama 2 Meditron 7B
@@ -297,7 +460,7 @@ def train_sft(base_checkpoint: str,
     trainer.train()
 
     if lora:
-        llm = llm.merge_and_unload()
+        llm = llm.merge_and_unload(device_map="cpu")
     
     ## save final model into the inputed save_dir/checkpoint
     trainer.save_model()
@@ -450,11 +613,10 @@ def dispatch() -> None:
     parser.add_argument("--n_train_epoch", help="Number of train epoch", default=1, type=int)
     parser.add_argument("--type", help="Type of training in ['CPT', 'SFT', 'DPO', 'jupyter']", default="CPT")
 
-    for arg in TRAIN_CONFIG:
-        parser.add_argument(f"--{arg}", help=TRAIN_CONFIG[arg][1], default=TRAIN_CONFIG[arg][0])                    
-    
-    for arg in SFT_CONFIG:
-        parser.add_argument(f"--{arg}", help=SFT_CONFIG[arg][1], default=SFT_CONFIG[arg][0])                    
+    for config in [TRAIN_CONFIG, SFT_CONFIG, LORA_CONFIG, DPO_CONFIG]:
+        for arg in config:
+            parser.add_argument(f"--{arg}", help=config[arg][1], default=config[arg][0])                    
+
     
     args = parser.parse_args()
 
